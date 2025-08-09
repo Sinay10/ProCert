@@ -60,7 +60,7 @@ procert-infrastructure/
 
 - Python 3.11+
 - AWS CLI configured
-- AWS CDK 2.205.0+
+- AWS CDK 2.1024.0+
 - Node.js 18+ (for CDK)
 
 ### Local Development
@@ -81,7 +81,7 @@ procert-infrastructure/
 
 3. **Install CDK dependencies**:
    ```bash
-   npm install -g aws-cdk@2.205.0
+   npm install -g aws-cdk@2.1024.0
    ```
 
 4. **Bootstrap CDK** (first time only):
