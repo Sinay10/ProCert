@@ -57,10 +57,9 @@ validate-cdk:
   services:
     - docker:dind
   variables:
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_TLS_CERTDIR: "/certs"
-    DOCKER_TLS_VERIFY: 1
-    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
   before_script:
     # Install Docker client
     - apt-get update && apt-get install -y docker.io
@@ -72,8 +71,8 @@ validate-cdk:
     - python -m venv .venv
     - source .venv/bin/activate
     - pip install -r requirements.txt
-    # Wait for Docker to be ready
-    - until docker info; do sleep 1; done
+    # Wait for Docker to be ready (with timeout)
+    - timeout 60 sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done' || echo "Docker not ready, continuing anyway"
   script:
     - echo "Validating CDK syntax..."
     - cdk synth --all
@@ -196,10 +195,9 @@ deploy:
   services:
     - docker:dind
   variables:
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_TLS_CERTDIR: "/certs"
-    DOCKER_TLS_VERIFY: 1
-    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
     AWS_ACCOUNT_ID: $AWS_ACCOUNT_ID
   before_script:
     # Install Docker client
@@ -218,8 +216,8 @@ deploy:
     - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
     - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
     - aws configure set default.region $AWS_DEFAULT_REGION
-    # Wait for Docker to be ready
-    - until docker info; do sleep 1; done
+    # Wait for Docker to be ready (with timeout)
+    - timeout 60 sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done' || echo "Docker not ready, continuing anyway"
   script:
     - echo "Deploying ProCert infrastructure..."
     - cdk bootstrap aws://$AWS_ACCOUNT_ID/$AWS_DEFAULT_REGION
