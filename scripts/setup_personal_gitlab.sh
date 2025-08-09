@@ -9,10 +9,39 @@ set -e
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}🚀 Personal GitLab Setup for ProCert${NC}"
 echo "====================================="
+
+# Check for Midway authentication if using AWS GitLab
+check_midway_auth() {
+    if [[ "$1" == "https://gitlab.aws.dev" ]]; then
+        echo -e "${YELLOW}🔐 AWS GitLab requires Midway authentication${NC}"
+        echo ""
+        echo "Checking Midway authentication..."
+        
+        if ! command -v mwinit &> /dev/null; then
+            echo -e "${RED}❌ mwinit command not found${NC}"
+            echo "Please install Midway tools first"
+            exit 1
+        fi
+        
+        echo "Running Midway authentication..."
+        echo "Command: mwinit -f -k ~/.ssh/id_ecdsa.pub"
+        
+        if mwinit -f -k ~/.ssh/id_ecdsa.pub; then
+            echo -e "${GREEN}✅ Midway authentication successful${NC}"
+        else
+            echo -e "${RED}❌ Midway authentication failed${NC}"
+            echo "Please run: mwinit -f -k ~/.ssh/id_ecdsa.pub"
+            echo "Then re-run this script"
+            exit 1
+        fi
+        echo ""
+    fi
+}
 
 # Get user input
 echo ""
@@ -49,6 +78,9 @@ echo -e "${GREEN}Configuration:${NC}"
 echo "GitLab URL: $GITLAB_URL"
 echo "Project: $GITLAB_PROJECT"
 echo ""
+
+# Check Midway authentication for AWS GitLab
+check_midway_auth "$GITLAB_URL"
 
 # Commit current changes
 echo -e "${GREEN}📝 Committing current changes...${NC}"
