@@ -13,8 +13,8 @@ variables:
   PYTHON_VERSION: "3.11"
   # AWS region (can be overridden by CI/CD variable)
   AWS_DEFAULT_REGION: "us-east-1"
-  # CDK version
-  CDK_VERSION: "2.1024.0"
+  # CDK version (npm CLI version)
+  CDK_VERSION: "2.210.0"
 
 # Cache configuration for faster builds
 cache:
