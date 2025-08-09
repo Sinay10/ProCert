@@ -1,4 +1,5 @@
 pypdf
-python-docx
 boto3
 opensearch-py
+langchain
+langchain-core

@@ -1,0 +1,214 @@
+# GitLab CI/CD Pipeline for ProCert Infrastructure
+# This pipeline handles testing, building, and deploying the ProCert system
+
+stages:
+  - validate
+  - test
+  - security
+  - build
+  - deploy
+
+variables:
+  # Python version
+  PYTHON_VERSION: "3.11"
+  # AWS region
+  AWS_DEFAULT_REGION: "us-east-1"
+  # CDK version
+  CDK_VERSION: "2.205.0"
+
+# Cache configuration for faster builds
+cache:
+  paths:
+    - .venv/
+    - node_modules/
+    - .cache/pip
+
+# Before script - common setup
+before_script:
+  - python --version
+  - pip install --upgrade pip
+  - python -m venv .venv
+  - source .venv/bin/activate
+  - pip install -r requirements.txt
+  - pip install -r requirements-dev.txt
+
+# ==================== VALIDATION STAGE ====================
+
+lint-python:
+  stage: validate
+  image: python:${PYTHON_VERSION}
+  script:
+    - pip install flake8 black isort
+    - echo "Running Python linting..."
+    - flake8 shared/ lambda_src/ chatbot_lambda_src/ index_setup_lambda_src/ --max-line-length=120
+    - echo "Checking code formatting..."
+    - black --check shared/ lambda_src/ chatbot_lambda_src/ index_setup_lambda_src/
+    - echo "Checking import sorting..."
+    - isort --check-only shared/ lambda_src/ chatbot_lambda_src/ index_setup_lambda_src/
+  allow_failure: true
+  only:
+    - merge_requests
+    - main
+    - develop
+
+validate-cdk:
+  stage: validate
+  image: node:18
+  before_script:
+    - npm install -g aws-cdk@${CDK_VERSION}
+    - python -m venv .venv
+    - source .venv/bin/activate
+    - pip install -r requirements.txt
+  script:
+    - echo "Validating CDK syntax..."
+    - cdk synth --all
+    - echo "Running CDK diff..."
+    - cdk diff || true
+  artifacts:
+    paths:
+      - cdk.out/
+    expire_in: 1 hour
+  only:
+    - merge_requests
+    - main
+    - develop
+
+# ==================== TESTING STAGE ====================
+
+unit-tests:
+  stage: test
+  image: python:${PYTHON_VERSION}
+  services:
+    - name: localstack/localstack:latest
+      alias: localstack
+  variables:
+    LOCALSTACK_HOST: localstack
+    AWS_ACCESS_KEY_ID: test
+    AWS_SECRET_ACCESS_KEY: test
+    AWS_DEFAULT_REGION: us-east-1
+  script:
+    - echo "Running unit tests..."
+    - python -m pytest tests/unit/ -v --cov=shared --cov-report=xml --cov-report=html
+    - echo "Test coverage report generated"
+  coverage: '/TOTAL.*\s+(\d+%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - htmlcov/
+    expire_in: 1 week
+  only:
+    - merge_requests
+    - main
+    - develop
+
+integration-tests:
+  stage: test
+  image: python:${PYTHON_VERSION}
+  services:
+    - name: localstack/localstack:latest
+      alias: localstack
+  variables:
+    LOCALSTACK_HOST: localstack
+    AWS_ACCESS_KEY_ID: test
+    AWS_SECRET_ACCESS_KEY: test
+  script:
+    - echo "Running integration tests..."
+    - python test_lambda_integration.py
+    - python test_certification_extraction.py
+    - python test_models.py
+  allow_failure: true
+  only:
+    - merge_requests
+    - main
+    - develop
+
+# ==================== SECURITY STAGE ====================
+
+security-scan:
+  stage: security
+  image: python:${PYTHON_VERSION}
+  script:
+    - pip install bandit safety
+    - echo "Running security scan with bandit..."
+    - bandit -r shared/ lambda_src/ chatbot_lambda_src/ index_setup_lambda_src/ -f json -o bandit-report.json || true
+    - echo "Checking for known security vulnerabilities..."
+    - safety check --json --output safety-report.json || true
+  artifacts:
+    reports:
+      sast: bandit-report.json
+    paths:
+      - bandit-report.json
+      - safety-report.json
+    expire_in: 1 week
+  allow_failure: true
+  only:
+    - merge_requests
+    - main
+    - develop
+
+# ==================== BUILD STAGE ====================
+
+build-lambdas:
+  stage: build
+  image: python:${PYTHON_VERSION}
+  script:
+    - echo "Building Lambda packages..."
+    - mkdir -p build/
+    # Build ingestion lambda
+    - cd lambda_src && zip -r ../build/ingestion-lambda.zip . && cd ..
+    # Build chatbot lambda
+    - cd chatbot_lambda_src && zip -r ../build/chatbot-lambda.zip . && cd ..
+    # Build index setup lambda
+    - cd index_setup_lambda_src && zip -r ../build/index-setup-lambda.zip . && cd ..
+    - echo "Lambda packages built successfully"
+  artifacts:
+    paths:
+      - build/
+    expire_in: 1 day
+  only:
+    - main
+    - develop
+    - /^release\/.*$/
+
+# ==================== DEPLOYMENT STAGE ====================
+
+deploy:
+  stage: deploy
+  image: node:18
+  before_script:
+    - npm install -g aws-cdk@${CDK_VERSION}
+    - python -m venv .venv
+    - source .venv/bin/activate
+    - pip install -r requirements.txt
+    # Configure AWS credentials (using GitLab CI/CD variables)
+    - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+    - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+    - aws configure set default.region $AWS_DEFAULT_REGION
+  script:
+    - echo "Deploying ProCert infrastructure..."
+    - cdk bootstrap aws://$AWS_ACCOUNT_ID/$AWS_DEFAULT_REGION
+    - cdk deploy --all --require-approval never
+    - echo "Deployment completed successfully"
+  environment:
+    name: development
+    url: https://procert-dev.example.com
+  variables:
+    AWS_ACCOUNT_ID: $AWS_ACCOUNT_ID
+  only:
+    - main
+  when: manual
+  allow_failure: false
+
+# ==================== CLEANUP ====================
+
+cleanup:
+  stage: .post
+  image: alpine:latest
+  script:
+    - echo "Cleaning up temporary files..."
+    - rm -rf build/ || true
+  when: always
+  allow_failure: true
