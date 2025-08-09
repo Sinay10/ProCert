@@ -53,9 +53,13 @@ lint-python:
 
 validate-cdk:
   stage: validate
-  image: node:18
+  image: python:${PYTHON_VERSION}
   before_script:
+    # Install Node.js and CDK
+    - curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+    - apt-get install -y nodejs
     - npm install -g aws-cdk@${CDK_VERSION}
+    # Set up Python environment
     - python -m venv .venv
     - source .venv/bin/activate
     - pip install -r requirements.txt
@@ -177,9 +181,15 @@ build-lambdas:
 
 deploy:
   stage: deploy
-  image: node:18
+  image: python:${PYTHON_VERSION}
   before_script:
+    # Install Node.js and CDK
+    - curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+    - apt-get install -y nodejs
     - npm install -g aws-cdk@${CDK_VERSION}
+    # Install AWS CLI
+    - pip install awscli
+    # Set up Python environment
     - python -m venv .venv
     - source .venv/bin/activate
     - pip install -r requirements.txt
