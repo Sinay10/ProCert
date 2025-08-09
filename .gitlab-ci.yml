@@ -54,7 +54,16 @@ lint-python:
 validate-cdk:
   stage: validate
   image: python:${PYTHON_VERSION}
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_TLS_VERIFY: 1
+    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
   before_script:
+    # Install Docker client
+    - apt-get update && apt-get install -y docker.io
     # Install Node.js and CDK
     - curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
     - apt-get install -y nodejs
@@ -63,6 +72,8 @@ validate-cdk:
     - python -m venv .venv
     - source .venv/bin/activate
     - pip install -r requirements.txt
+    # Wait for Docker to be ready
+    - until docker info; do sleep 1; done
   script:
     - echo "Validating CDK syntax..."
     - cdk synth --all
@@ -182,7 +193,17 @@ build-lambdas:
 deploy:
   stage: deploy
   image: python:${PYTHON_VERSION}
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_TLS_VERIFY: 1
+    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+    AWS_ACCOUNT_ID: $AWS_ACCOUNT_ID
   before_script:
+    # Install Docker client
+    - apt-get update && apt-get install -y docker.io
     # Install Node.js and CDK
     - curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
     - apt-get install -y nodejs
@@ -197,6 +218,8 @@ deploy:
     - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
     - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
     - aws configure set default.region $AWS_DEFAULT_REGION
+    # Wait for Docker to be ready
+    - until docker info; do sleep 1; done
   script:
     - echo "Deploying ProCert infrastructure..."
     - cdk bootstrap aws://$AWS_ACCOUNT_ID/$AWS_DEFAULT_REGION
@@ -205,8 +228,6 @@ deploy:
   environment:
     name: development
     url: https://procert-dev.example.com
-  variables:
-    AWS_ACCOUNT_ID: $AWS_ACCOUNT_ID
   only:
     - main
   when: manual
