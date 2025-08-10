@@ -101,6 +101,12 @@ python -m pytest tests/unit/ -v --cov=shared --cov-report=html
 # Run integration tests
 python test_lambda_integration.py
 python test_certification_extraction.py
+
+# Test Docker bundling for Lambda functions
+python scripts/test_docker_bundling.py
+
+# Run comprehensive pre-deployment tests
+python scripts/test_deployment.py
 ```
 
 ## 🚀 Deployment

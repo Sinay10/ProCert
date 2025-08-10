@@ -138,6 +138,34 @@ integration-tests:
     - main
     - develop
 
+test-docker-bundling:
+  stage: test
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
+  before_script:
+    # Install Python and Node.js
+    - apk add --no-cache python3 py3-pip nodejs npm curl bash
+    - python3 -m venv .venv
+    - source .venv/bin/activate
+    - pip install -r requirements.txt
+    # Install CDK
+    - npm install -g aws-cdk@${CDK_VERSION}
+    # Wait for Docker to be ready
+    - timeout 60 sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done' || echo "Docker not ready, continuing anyway"
+  script:
+    - echo "Testing Docker bundling for Lambda functions..."
+    - source .venv/bin/activate
+    - python scripts/test_docker_bundling.py
+  only:
+    - merge_requests
+    - main
+    - develop
+
 # ==================== SECURITY STAGE ====================
 
 security-scan:

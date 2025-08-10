@@ -30,8 +30,8 @@ class ProcertInfrastructureStack(Stack):
             lambda_code = lambda_.Code.from_asset("lambda_src",
                 bundling=BundlingOptions(
                     image=lambda_.Runtime.PYTHON_3_11.bundling_image,
+                    entrypoint=["/bin/bash", "-c"],
                     command=[
-                        "bash", "-c",
                         "pip install --platform manylinux2014_x86_64 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output"
                     ]
                 )
@@ -258,7 +258,8 @@ class ProcertInfrastructureStack(Stack):
             index_lambda_code = lambda_.Code.from_asset("index_setup_lambda_src",
                 bundling=BundlingOptions(
                     image=lambda_.Runtime.PYTHON_3_11.bundling_image,
-                    command=["bash", "-c", "pip install -r requirements.txt -t /asset-output && cp -au . /asset-output"]
+                    entrypoint=["/bin/bash", "-c"],
+                    command=["pip install -r requirements.txt -t /asset-output && cp -au . /asset-output"]
                 )
             )
         
@@ -296,8 +297,8 @@ class ProcertInfrastructureStack(Stack):
             chatbot_lambda_code = lambda_.Code.from_asset("chatbot_lambda_src",
                 bundling=BundlingOptions(
                     image=lambda_.Runtime.PYTHON_3_11.bundling_image,
+                    entrypoint=["/bin/bash", "-c"],
                     command=[
-                        "bash", "-c",
                         "pip install --platform manylinux2014_x86_64 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output"
                     ]
                 )
