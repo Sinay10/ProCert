@@ -18,12 +18,16 @@ class ProcertInfrastructureStack(Stack):
         super().__init__(scope, construct_id, **kwargs)
 
         # 1. INGESTION LAMBDA FUNCTION
-        ingestion_lambda = lambda_.Function(self, "ProcertIngestionLambdaV2",
-            architecture=lambda_.Architecture.X86_64,
-            description="Processes documents from S3 for the ProCert RAG system.",
-            runtime=lambda_.Runtime.PYTHON_3_11,
-            handler="main.handler",
-            code=lambda_.Code.from_asset("lambda_src",
+        # Check if we're in CI/CD environment to skip Docker bundling
+        import os
+        skip_bundling = os.environ.get('CI') or os.environ.get('GITLAB_CI')
+        
+        if skip_bundling:
+            # Simple asset bundling for CI/CD (no Docker)
+            lambda_code = lambda_.Code.from_asset("lambda_src")
+        else:
+            # Full Docker bundling for local development and deployment
+            lambda_code = lambda_.Code.from_asset("lambda_src",
                 bundling=BundlingOptions(
                     image=lambda_.Runtime.PYTHON_3_11.bundling_image,
                     command=[
@@ -31,7 +35,14 @@ class ProcertInfrastructureStack(Stack):
                         "pip install --platform manylinux2014_x86_64 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output"
                     ]
                 )
-            ),
+            )
+        
+        ingestion_lambda = lambda_.Function(self, "ProcertIngestionLambdaV2",
+            architecture=lambda_.Architecture.X86_64,
+            description="Processes documents from S3 for the ProCert RAG system.",
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="main.handler",
+            code=lambda_code,
             timeout=Duration.seconds(300),
             memory_size=512
         )
@@ -240,16 +251,22 @@ class ProcertInfrastructureStack(Stack):
         # --- NEW CHATBOT RESOURCES ---
 
         # 8. LAMBDA AND CUSTOM RESOURCE TO CREATE THE OPENSEARCH INDEX
-        index_setup_lambda = lambda_.Function(self, "ProcertIndexSetupLambda",
-            architecture=lambda_.Architecture.X86_64,
-            runtime=lambda_.Runtime.PYTHON_3_11,
-            handler="main.handler",
-            code=lambda_.Code.from_asset("index_setup_lambda_src",
+        # Index setup lambda with conditional bundling
+        if skip_bundling:
+            index_lambda_code = lambda_.Code.from_asset("index_setup_lambda_src")
+        else:
+            index_lambda_code = lambda_.Code.from_asset("index_setup_lambda_src",
                 bundling=BundlingOptions(
                     image=lambda_.Runtime.PYTHON_3_11.bundling_image,
                     command=["bash", "-c", "pip install -r requirements.txt -t /asset-output && cp -au . /asset-output"]
                 )
-            ),
+            )
+        
+        index_setup_lambda = lambda_.Function(self, "ProcertIndexSetupLambda",
+            architecture=lambda_.Architecture.X86_64,
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="main.handler",
+            code=index_lambda_code,
             timeout=Duration.seconds(120),
             memory_size=256
         )
@@ -272,12 +289,11 @@ class ProcertInfrastructureStack(Stack):
             }
         )
         # 9. CHATBOT LAMBDA FUNCTION
-        chatbot_lambda = lambda_.Function(self, "ProcertChatbotLambda",
-            architecture=lambda_.Architecture.X86_64,
-            description="Handles user queries for the ProCert RAG system.",
-            runtime=lambda_.Runtime.PYTHON_3_11,
-            handler="main.handler",
-            code=lambda_.Code.from_asset("chatbot_lambda_src",
+        # Chatbot lambda with conditional bundling
+        if skip_bundling:
+            chatbot_lambda_code = lambda_.Code.from_asset("chatbot_lambda_src")
+        else:
+            chatbot_lambda_code = lambda_.Code.from_asset("chatbot_lambda_src",
                 bundling=BundlingOptions(
                     image=lambda_.Runtime.PYTHON_3_11.bundling_image,
                     command=[
@@ -285,7 +301,14 @@ class ProcertInfrastructureStack(Stack):
                         "pip install --platform manylinux2014_x86_64 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output"
                     ]
                 )
-            ),
+            )
+        
+        chatbot_lambda = lambda_.Function(self, "ProcertChatbotLambda",
+            architecture=lambda_.Architecture.X86_64,
+            description="Handles user queries for the ProCert RAG system.",
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="main.handler",
+            code=chatbot_lambda_code,
             timeout=Duration.seconds(30),
             memory_size=512,
             environment={
