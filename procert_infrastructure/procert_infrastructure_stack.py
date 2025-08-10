@@ -47,52 +47,53 @@ class ProcertInfrastructureStack(Stack):
             memory_size=512
         )
 
-        # 2. CERTIFICATION-AWARE S3 BUCKETS
-        # General materials bucket (existing, renamed for clarity)
-        self.materials_bucket_general = s3.Bucket(self, "CertificationMaterialsBucketGeneral",
-            bucket_name=f"procert-materials-general-{self.account}",
-            versioned=True, encryption=s3.BucketEncryption.S3_MANAGED,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.RETAIN
-        )
+        # 2. CERTIFICATION-AWARE S3 BUCKETS - Complete set for all AWS certifications
         
-        # AWS Solutions Architect Associate bucket
-        self.materials_bucket_saa = s3.Bucket(self, "CertificationMaterialsBucketSAA",
-            bucket_name=f"procert-materials-saa-{self.account}",
-            versioned=True, encryption=s3.BucketEncryption.S3_MANAGED,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.RETAIN
-        )
+        # Define all AWS certification types with their bucket configurations
+        certification_configs = {
+            'general': {'name': 'General', 'description': 'General AWS content and mixed materials'},
+            'ccp': {'name': 'CCP', 'description': 'AWS Certified Cloud Practitioner'},
+            'aip': {'name': 'AIP', 'description': 'AWS Certified AI Practitioner'},
+            'saa': {'name': 'SAA', 'description': 'AWS Certified Solutions Architect Associate'},
+            'dva': {'name': 'DVA', 'description': 'AWS Certified Developer Associate'},
+            'soa': {'name': 'SOA', 'description': 'AWS Certified SysOps Administrator Associate'},
+            'mla': {'name': 'MLA', 'description': 'AWS Certified Machine Learning Engineer Associate'},
+            'dea': {'name': 'DEA', 'description': 'AWS Certified Data Engineer Associate'},
+            'dop': {'name': 'DOP', 'description': 'AWS Certified DevOps Engineer Professional'},
+            'sap': {'name': 'SAP', 'description': 'AWS Certified Solutions Architect Professional'},
+            'mls': {'name': 'MLS', 'description': 'AWS Certified Machine Learning Specialty'},
+            'scs': {'name': 'SCS', 'description': 'AWS Certified Security Specialty'},
+            'ans': {'name': 'ANS', 'description': 'AWS Certified Advanced Networking Specialty'}
+        }
         
-        # AWS Developer Associate bucket
-        self.materials_bucket_dva = s3.Bucket(self, "CertificationMaterialsBucketDVA",
-            bucket_name=f"procert-materials-dva-{self.account}",
-            versioned=True, encryption=s3.BucketEncryption.S3_MANAGED,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.RETAIN
-        )
+        # Create buckets for all certifications
+        self.certification_buckets = {}
+        self.all_materials_buckets = []
         
-        # AWS SysOps Administrator Associate bucket
-        self.materials_bucket_soa = s3.Bucket(self, "CertificationMaterialsBucketSOA",
-            bucket_name=f"procert-materials-soa-{self.account}",
-            versioned=True, encryption=s3.BucketEncryption.S3_MANAGED,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.RETAIN
-        )
+        for cert_code, config in certification_configs.items():
+            bucket = s3.Bucket(self, f"CertificationMaterialsBucket{config['name']}",
+                bucket_name=f"procert-materials-{cert_code}-{self.account}",
+                versioned=True, 
+                encryption=s3.BucketEncryption.S3_MANAGED,
+                block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+                removal_policy=RemovalPolicy.RETAIN
+            )
+            
+            # Store bucket reference
+            self.certification_buckets[cert_code] = bucket
+            self.all_materials_buckets.append(bucket)
+            
+            # Create output for each bucket
+            CfnOutput(self, f"MaterialsBucket{config['name']}Name", 
+                     value=bucket.bucket_name,
+                     description=f"S3 bucket for {config['description']} materials")
 
-        # Store all buckets for easy iteration
-        self.all_materials_buckets = [
-            self.materials_bucket_general,
-            self.materials_bucket_saa,
-            self.materials_bucket_dva,
-            self.materials_bucket_soa
-        ]
-
-        # Output bucket names
-        CfnOutput(self, "MaterialsBucketGeneralName", value=self.materials_bucket_general.bucket_name)
-        CfnOutput(self, "MaterialsBucketSAAName", value=self.materials_bucket_saa.bucket_name)
-        CfnOutput(self, "MaterialsBucketDVAName", value=self.materials_bucket_dva.bucket_name)
-        CfnOutput(self, "MaterialsBucketSOAName", value=self.materials_bucket_soa.bucket_name)
+        # Maintain backward compatibility
+        self.materials_bucket = self.certification_buckets['general']
+        self.materials_bucket_general = self.certification_buckets['general']
+        self.materials_bucket_saa = self.certification_buckets['saa']
+        self.materials_bucket_dva = self.certification_buckets['dva']
+        self.materials_bucket_soa = self.certification_buckets['soa']
 
         # Apply security policies to all buckets
         for bucket in self.all_materials_buckets:
