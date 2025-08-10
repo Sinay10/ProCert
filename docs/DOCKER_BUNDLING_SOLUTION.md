@@ -77,22 +77,27 @@ test-docker-bundling:
 
 ## Why This Solution Works
 
-### 1. **CI/CD Reliability**
+### 1. **AWS GitLab Security Constraints**
+- AWS GitLab **intentionally blocks Docker-in-Docker for security reasons**
+- Our conditional bundling strategy aligns perfectly with this constraint
+- No wasted time trying to work around security policies
+
+### 2. **CI/CD Reliability**
 - Pipeline runs successfully without Docker issues
 - All validation and testing still occurs
 - No false positives from Docker configuration problems
 
-### 2. **Production Safety**
+### 3. **Production Safety**
 - Docker bundling is fully tested locally before deployment
-- Production deployments use proper Docker bundling
+- Local deployments use proper Docker bundling
 - Dependencies are correctly packaged for Lambda runtime
 
-### 3. **Developer Experience**
+### 4. **Developer Experience**
 - Local development uses full Docker bundling
 - Comprehensive testing ensures reliability
 - Clear documentation and tooling
 
-### 4. **Cost Efficiency**
+### 5. **Cost Efficiency**
 - No wasted CI/CD minutes on Docker issues
 - Faster pipeline execution
 - Reliable deployments
@@ -114,8 +119,9 @@ cdk synth --all
 
 ### CI/CD Testing
 - Unit tests run in CI without Docker dependencies
-- Docker bundling is tested separately with proper DinD setup
+- **Docker bundling testing is done locally only** (AWS GitLab blocks Docker-in-Docker)
 - Integration tests use LocalStack for AWS service simulation
+- CDK validation runs with Docker bundling skipped
 
 ## Deployment Process
 
