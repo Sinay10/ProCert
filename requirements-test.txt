@@ -1,0 +1,10 @@
+# Minimal requirements for testing only - using latest versions to avoid SSL issues
+pytest
+pytest-cov
+pytest-mock
+moto
+boto3
+botocore
+python-dateutil
+typing_extensions
+attrs
