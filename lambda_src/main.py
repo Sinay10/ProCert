@@ -370,13 +370,162 @@ def extract_text(bucket, key):
     os.remove(temp_file_path)
     return text
 
-def chunk_text(text, chunk_size=1000, chunk_overlap=200):
-    # ... (this function remains the same)
+def chunk_text_certification_aware(text, certification_type='GENERAL', chunk_size=1000, chunk_overlap=200):
+    """
+    Enhanced text chunking with certification-aware strategies.
+    
+    Args:
+        text: Text to chunk
+        certification_type: Certification type for context-aware chunking
+        chunk_size: Base chunk size
+        chunk_overlap: Overlap between chunks
+        
+    Returns:
+        List of text chunks optimized for the certification type
+    """
+    # Adjust chunking parameters based on certification type
+    if certification_type in ['CCP', 'AIP']:  # Foundational - smaller chunks for basic concepts
+        chunk_size = 800
+        chunk_overlap = 150
+        separators = ["\n\n", "\n", ". ", " ", ""]
+    elif certification_type in ['DOP', 'SAP']:  # Professional - larger chunks for complex topics
+        chunk_size = 1200
+        chunk_overlap = 250
+        separators = ["\n\n", "\n", ". ", " ", ""]
+    elif certification_type in ['MLS', 'SCS', 'ANS']:  # Specialty - preserve technical context
+        chunk_size = 1100
+        chunk_overlap = 300  # Higher overlap to preserve technical relationships
+        separators = ["\n\n", "\n", ". ", " ", ""]
+    else:  # Associate level and general
+        chunk_size = 1000
+        chunk_overlap = 200
+        separators = ["\n\n", "\n", ". ", " ", ""]
+    
+    # Use certification-aware separators to avoid breaking important content
+    cert_aware_separators = _get_certification_aware_separators(certification_type) + separators
+    
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size, chunk_overlap=chunk_overlap,
-        length_function=len, separators=["\n\n", "\n", " ", ""],
+        chunk_size=chunk_size, 
+        chunk_overlap=chunk_overlap,
+        length_function=len, 
+        separators=cert_aware_separators,
     )
-    return text_splitter.split_text(text)
+    
+    chunks = text_splitter.split_text(text)
+    
+    # Post-process chunks to avoid breaking certification-specific content
+    processed_chunks = _post_process_certification_chunks(chunks, certification_type)
+    
+    print(f"Created {len(processed_chunks)} certification-aware chunks for {certification_type}")
+    return processed_chunks
+
+
+def _get_certification_aware_separators(certification_type: str) -> List[str]:
+    """Get certification-specific separators to preserve important content boundaries."""
+    base_separators = [
+        "\n\n# ",  # Markdown headers
+        "\n## ",   # Subheaders
+        "\n### ",  # Sub-subheaders
+        "\nQuestion ",  # Question boundaries
+        "\nQ: ",   # Q&A format
+        "\nA: ",   # Answer boundaries
+    ]
+    
+    # Add certification-specific separators
+    if certification_type in ['SAA', 'SAP']:  # Architecture certifications
+        base_separators.extend([
+            "\nArchitecture Pattern:",
+            "\nDesign Principle:",
+            "\nBest Practice:",
+            "\nService:",
+        ])
+    elif certification_type in ['DVA']:  # Developer certification
+        base_separators.extend([
+            "\nCode Example:",
+            "\nAPI:",
+            "\nSDK:",
+            "\nFunction:",
+        ])
+    elif certification_type in ['SOA', 'DOP']:  # Operations certifications
+        base_separators.extend([
+            "\nMonitoring:",
+            "\nDeployment:",
+            "\nConfiguration:",
+            "\nTroubleshooting:",
+        ])
+    elif certification_type in ['SCS']:  # Security certification
+        base_separators.extend([
+            "\nSecurity Control:",
+            "\nCompliance:",
+            "\nEncryption:",
+            "\nAccess Control:",
+        ])
+    elif certification_type in ['MLS', 'MLA']:  # ML certifications
+        base_separators.extend([
+            "\nAlgorithm:",
+            "\nModel:",
+            "\nTraining:",
+            "\nInference:",
+        ])
+    
+    return base_separators
+
+
+def _post_process_certification_chunks(chunks: List[str], certification_type: str) -> List[str]:
+    """Post-process chunks to ensure certification-specific content integrity."""
+    processed_chunks = []
+    
+    for chunk in chunks:
+        # Ensure questions aren't split across chunks
+        if _contains_partial_question(chunk):
+            # Try to merge with previous chunk if it makes sense
+            if processed_chunks and len(processed_chunks[-1]) + len(chunk) < 1500:
+                processed_chunks[-1] += " " + chunk
+                continue
+        
+        # Ensure code examples aren't split (for DVA certification)
+        if certification_type == 'DVA' and _contains_partial_code(chunk):
+            if processed_chunks and len(processed_chunks[-1]) + len(chunk) < 1500:
+                processed_chunks[-1] += " " + chunk
+                continue
+        
+        processed_chunks.append(chunk)
+    
+    return processed_chunks
+
+
+def _contains_partial_question(chunk: str) -> bool:
+    """Check if chunk contains a partial question that should be merged."""
+    # Look for question patterns that might be incomplete
+    question_starts = ['What is', 'How does', 'Which of', 'When should', 'Why would']
+    question_ends = ['?', 'A)', 'B)', 'C)', 'D)']
+    
+    has_question_start = any(start in chunk for start in question_starts)
+    has_question_end = any(end in chunk for end in question_ends)
+    
+    # If it starts like a question but doesn't end properly, it might be partial
+    return has_question_start and not has_question_end
+
+
+def _contains_partial_code(chunk: str) -> bool:
+    """Check if chunk contains partial code that should be merged."""
+    code_indicators = ['```', 'import ', 'def ', 'class ', 'function', '{', '}']
+    
+    # Count opening and closing braces/brackets
+    open_braces = chunk.count('{') + chunk.count('[') + chunk.count('(')
+    close_braces = chunk.count('}') + chunk.count(']') + chunk.count(')')
+    
+    # If there are unmatched braces or code indicators, it might be partial
+    has_code = any(indicator in chunk for indicator in code_indicators)
+    unmatched_braces = abs(open_braces - close_braces) > 2
+    
+    return has_code and unmatched_braces
+
+
+# Maintain backward compatibility
+def chunk_text(text, chunk_size=1000, chunk_overlap=200):
+    """Backward compatible wrapper for certification-aware chunking."""
+    return chunk_text_certification_aware(text, 'GENERAL', chunk_size, chunk_overlap)
 
 def get_embeddings(chunks):
     # ... (this function remains the same)
@@ -392,9 +541,88 @@ def get_embeddings(chunks):
         embeddings.append(embedding)
     return embeddings
 
-def store_embeddings(chunks, embeddings, file_key, content_metadata):
+def store_embeddings_enhanced(chunks, embeddings, file_key, content_metadata):
     """
-    Stores text chunks and their embeddings in OpenSearch with certification-aware metadata.
+    Stores text chunks and their embeddings using the enhanced vector storage service.
+    
+    Args:
+        chunks: List of text chunks
+        embeddings: List of embedding vectors
+        file_key: S3 object key
+        content_metadata: Content metadata dictionary
+    """
+    try:
+        # Import the enhanced models and services
+        import sys
+        import os
+        
+        # Add shared directory to path for imports
+        shared_path = '/opt/python/shared' if os.path.exists('/opt/python/shared') else '/tmp/shared'
+        if shared_path not in sys.path:
+            sys.path.append(shared_path)
+        
+        from shared.models import (
+            VectorDocument, ContentMetadata, CertificationType, 
+            ContentType, DifficultyLevel, get_certification_level
+        )
+        from shared.vector_storage_service import VectorStorageService
+        
+        # Convert content_metadata dict to ContentMetadata object
+        cert_type = CertificationType(content_metadata.get('certification_type', 'GENERAL'))
+        content_type = ContentType(content_metadata.get('content_type', 'study_guide'))
+        difficulty = DifficultyLevel(content_metadata.get('difficulty_level', 'intermediate'))
+        
+        content_meta_obj = ContentMetadata(
+            content_id=content_metadata['content_id'],
+            title=content_metadata.get('title', os.path.basename(file_key)),
+            content_type=content_type,
+            certification_type=cert_type,
+            category=content_metadata.get('category', 'general'),
+            subcategory=content_metadata.get('subcategory'),
+            difficulty_level=difficulty,
+            tags=content_metadata.get('tags', []),
+            created_at=datetime.fromisoformat(content_metadata.get('created_at', datetime.utcnow().isoformat())),
+            version=content_metadata.get('version', '1.0'),
+            source_file=file_key,
+            source_bucket=content_metadata.get('source_bucket', ''),
+            chunk_count=len(chunks),
+            question_count=content_metadata.get('question_count', 0)
+        )
+        
+        # Initialize vector storage service
+        vector_service = VectorStorageService(
+            opensearch_endpoint=opensearch_endpoint,
+            index_name=opensearch_index,
+            region_name=os.environ.get('AWS_REGION', 'us-east-1')
+        )
+        
+        # Create certification-aware vector documents
+        vector_docs = vector_service.create_certification_aware_chunks(
+            content_metadata=content_meta_obj,
+            text=' '.join(chunks),  # Reconstruct full text for context
+            embeddings=embeddings,
+            chunk_texts=chunks
+        )
+        
+        # Store with certification-aware indexing
+        success = vector_service.store_vector_documents(vector_docs, use_certification_indices=True)
+        
+        if success:
+            print(f"Successfully stored {len(vector_docs)} certification-aware documents for {cert_type.value}")
+        else:
+            print(f"Failed to store some documents for {cert_type.value}")
+        
+        return success
+        
+    except Exception as e:
+        print(f"Error in enhanced vector storage: {e}")
+        # Fallback to original storage method
+        return store_embeddings_fallback(chunks, embeddings, file_key, content_metadata)
+
+
+def store_embeddings_fallback(chunks, embeddings, file_key, content_metadata):
+    """
+    Fallback storage method using the original approach.
     
     Args:
         chunks: List of text chunks
@@ -413,6 +641,7 @@ def store_embeddings(chunks, embeddings, file_key, content_metadata):
             'text': chunk,
             'vector_field': embedding,  # OpenSearch vector field
             'certification_type': certification_type,
+            'certification_level': _get_cert_level_from_type(certification_type),
             'source_file': file_key,
             'source_bucket': content_metadata.get('source_bucket', ''),
             'chunk_size': len(chunk),
@@ -420,11 +649,21 @@ def store_embeddings(chunks, embeddings, file_key, content_metadata):
             'difficulty_level': content_metadata.get('difficulty_level', 'intermediate'),
             'content_type': content_metadata.get('content_type', 'study_guide'),
             'category': content_metadata.get('category', 'general'),
+            'subcategory': content_metadata.get('subcategory'),
             'tags': content_metadata.get('tags', []),
             'metadata': {
                 'extraction_method': content_metadata.get('extraction_method', 'automatic'),
                 'question_count': content_metadata.get('question_count', 0),
-                'total_chunks': len(chunks)
+                'total_chunks': len(chunks),
+                'version': content_metadata.get('version', '1.0'),
+                'language': 'en',
+                'chunk_position': i / len(chunks),
+                'chunk_overlap_info': {
+                    'has_previous': i > 0,
+                    'has_next': i < len(chunks) - 1,
+                    'is_first': i == 0,
+                    'is_last': i == len(chunks) - 1
+                }
             }
         }
         
@@ -437,6 +676,31 @@ def store_embeddings(chunks, embeddings, file_key, content_metadata):
             
     print(f"Successfully indexed {len(chunks)} certification-aware documents into OpenSearch for {certification_type}")
     return True
+
+
+def _get_cert_level_from_type(cert_type: str) -> str:
+    """Get certification level from certification type."""
+    foundational = ['CCP', 'AIP']
+    associate = ['MLA', 'DEA', 'DVA', 'SAA', 'SOA']
+    professional = ['DOP', 'SAP']
+    specialty = ['ANS', 'MLS', 'SCS']
+    
+    if cert_type in foundational:
+        return 'foundational'
+    elif cert_type in associate:
+        return 'associate'
+    elif cert_type in professional:
+        return 'professional'
+    elif cert_type in specialty:
+        return 'specialty'
+    else:
+        return 'general'
+
+
+# Maintain backward compatibility
+def store_embeddings(chunks, embeddings, file_key, content_metadata):
+    """Backward compatible wrapper for enhanced storage."""
+    return store_embeddings_enhanced(chunks, embeddings, file_key, content_metadata)
 
 def handler(event, context):
     """
@@ -489,8 +753,8 @@ def handler(event, context):
         # Determine content type based on extracted questions
         content_type = 'practice_exam' if len(extracted_questions) > 5 else 'study_guide'
         
-        # Create content chunks and embeddings
-        text_chunks = chunk_text(document_text)
+        # Create certification-aware content chunks and embeddings
+        text_chunks = chunk_text_certification_aware(document_text, final_certification)
         chunk_embeddings = get_embeddings(text_chunks)
         
         # Create enhanced content metadata
@@ -517,8 +781,8 @@ def handler(event, context):
             }
         }
         
-        # Store embeddings with enhanced metadata
-        store_embeddings(text_chunks, chunk_embeddings, key, content_metadata)
+        # Store embeddings with enhanced certification-aware metadata
+        storage_success = store_embeddings_enhanced(text_chunks, chunk_embeddings, key, content_metadata)
         
         # Log extracted questions for debugging (first 3 only)
         if extracted_questions:

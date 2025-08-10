@@ -30,9 +30,16 @@ def handler(event, context):
     try:
         if request_type in ['Create', 'Update']:
             index_body = {
-                'settings': {'index': {'knn': True}},
+                'settings': {
+                    'index': {
+                        'knn': True,
+                        'number_of_shards': 2,
+                        'number_of_replicas': 0
+                    }
+                },
                 'mappings': {
                     'properties': {
+                        # Vector field for semantic search
                         'vector_field': {
                             'type': 'knn_vector',
                             'dimension': 1536, # Dimension for Titan Embeddings
@@ -42,7 +49,50 @@ def handler(event, context):
                                 'engine': 'nmslib'
                             }
                         },
-                        'text': {'type': 'text'}
+                        # Core document fields
+                        'document_id': {'type': 'keyword'},
+                        'content_id': {'type': 'keyword'},
+                        'chunk_index': {'type': 'integer'},
+                        'text': {'type': 'text', 'analyzer': 'standard'},
+                        
+                        # Certification-specific metadata fields
+                        'certification_type': {
+                            'type': 'keyword',
+                            'fields': {
+                                'text': {'type': 'text'}
+                            }
+                        },
+                        'certification_level': {'type': 'keyword'},  # foundational, associate, professional, specialty
+                        
+                        # Content classification fields
+                        'content_type': {'type': 'keyword'},
+                        'category': {
+                            'type': 'keyword',
+                            'fields': {
+                                'text': {'type': 'text'}
+                            }
+                        },
+                        'subcategory': {'type': 'keyword'},
+                        'difficulty_level': {'type': 'keyword'},
+                        'tags': {'type': 'keyword'},
+                        
+                        # Source and processing metadata
+                        'source_file': {'type': 'keyword'},
+                        'source_bucket': {'type': 'keyword'},
+                        'chunk_size': {'type': 'integer'},
+                        'processed_at': {'type': 'date'},
+                        
+                        # Nested metadata object for additional context
+                        'metadata': {
+                            'type': 'object',
+                            'properties': {
+                                'extraction_method': {'type': 'keyword'},
+                                'question_count': {'type': 'integer'},
+                                'total_chunks': {'type': 'integer'},
+                                'version': {'type': 'keyword'},
+                                'language': {'type': 'keyword'}
+                            }
+                        }
                     }
                 }
             }

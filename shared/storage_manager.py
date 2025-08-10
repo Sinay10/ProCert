@@ -5,6 +5,7 @@ This module provides the concrete implementation of the IStorageManager interfac
 handling data persistence across DynamoDB, OpenSearch, and S3 storage systems.
 """
 
+import os
 import boto3
 import json
 import logging
@@ -570,14 +571,11 @@ class StorageManager(IStorageManager):
         except (ValueError, IndexError):
             return "1.0.1"
     
-    # Additional methods for vector storage and search (placeholder implementations)
+    # Vector storage integration
     
     def store_vector_embeddings(self, embeddings: List[VectorDocument]) -> bool:
         """
-        Store vector embeddings in OpenSearch.
-        
-        Note: This is a placeholder implementation. The actual vector storage
-        would be handled by a separate OpenSearch service.
+        Store vector embeddings in OpenSearch with certification-aware indexing.
         
         Args:
             embeddings: List of VectorDocument instances
@@ -585,6 +583,75 @@ class StorageManager(IStorageManager):
         Returns:
             True if successful
         """
-        logger.info(f"Vector storage placeholder called with {len(embeddings)} embeddings")
-        # In a real implementation, this would interact with OpenSearch
-        return True
+        try:
+            # Import here to avoid circular imports
+            from .vector_storage_service import VectorStorageService
+            
+            # Initialize vector storage service if not already done
+            if not hasattr(self, '_vector_service'):
+                # These would typically come from environment variables
+                opensearch_endpoint = os.environ.get('OPENSEARCH_ENDPOINT', '')
+                opensearch_index = os.environ.get('OPENSEARCH_INDEX', 'procert-vector-collection')
+                
+                if not opensearch_endpoint:
+                    logger.error("OPENSEARCH_ENDPOINT environment variable not set")
+                    return False
+                
+                self._vector_service = VectorStorageService(
+                    opensearch_endpoint=opensearch_endpoint,
+                    index_name=opensearch_index,
+                    region_name=self.region_name
+                )
+            
+            # Store vector documents with certification-aware indexing
+            return self._vector_service.store_vector_documents(embeddings, use_certification_indices=True)
+            
+        except Exception as e:
+            logger.error(f"Error storing vector embeddings: {e}")
+            return False
+    
+    def search_vector_embeddings(self, query_embedding: List[float], 
+                               certification_type: Optional[CertificationType] = None,
+                               filters: Optional[Dict[str, Any]] = None,
+                               limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Search vector embeddings with certification filtering.
+        
+        Args:
+            query_embedding: Query vector embedding
+            certification_type: Optional certification type filter
+            filters: Additional search filters
+            limit: Maximum number of results
+            
+        Returns:
+            List of search results
+        """
+        try:
+            # Import here to avoid circular imports
+            from .vector_storage_service import VectorStorageService
+            
+            # Initialize vector storage service if not already done
+            if not hasattr(self, '_vector_service'):
+                opensearch_endpoint = os.environ.get('OPENSEARCH_ENDPOINT', '')
+                opensearch_index = os.environ.get('OPENSEARCH_INDEX', 'procert-vector-collection')
+                
+                if not opensearch_endpoint:
+                    logger.error("OPENSEARCH_ENDPOINT environment variable not set")
+                    return []
+                
+                self._vector_service = VectorStorageService(
+                    opensearch_endpoint=opensearch_endpoint,
+                    index_name=opensearch_index,
+                    region_name=self.region_name
+                )
+            
+            return self._vector_service.search_by_certification(
+                query_embedding=query_embedding,
+                certification_type=certification_type,
+                filters=filters,
+                limit=limit
+            )
+            
+        except Exception as e:
+            logger.error(f"Error searching vector embeddings: {e}")
+            return []

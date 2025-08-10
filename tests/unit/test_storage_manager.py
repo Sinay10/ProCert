@@ -5,6 +5,7 @@ This module contains comprehensive tests for all StorageManager functionality
 including content metadata storage, user progress tracking, versioning, and error handling.
 """
 
+import os
 import pytest
 import boto3
 from datetime import datetime
@@ -502,8 +503,18 @@ class TestStorageManagerErrorHandling:
         with pytest.raises(RuntimeError):
             storage_manager.store_content_metadata(sample_metadata)
     
-    def test_vector_storage_placeholder(self, storage_manager):
-        """Test vector storage placeholder method."""
+    @patch.dict(os.environ, {
+        'OPENSEARCH_ENDPOINT': 'https://test-endpoint.us-east-1.aoss.amazonaws.com',
+        'OPENSEARCH_INDEX': 'test-index'
+    })
+    @patch('shared.vector_storage_service.VectorStorageService')
+    def test_vector_storage_placeholder(self, mock_vector_service_class, storage_manager):
+        """Test vector storage with enhanced service."""
+        # Mock the vector service
+        mock_vector_service = Mock()
+        mock_vector_service.store_vector_documents.return_value = True
+        mock_vector_service_class.return_value = mock_vector_service
+        
         # Create sample vector documents
         vectors = [
             VectorDocument(
@@ -516,9 +527,13 @@ class TestStorageManagerErrorHandling:
             )
         ]
         
-        # Should return True (placeholder implementation)
+        # Should return True with enhanced implementation
         result = storage_manager.store_vector_embeddings(vectors)
         assert result is True
+        
+        # Verify vector service was called
+        mock_vector_service_class.assert_called_once()
+        mock_vector_service.store_vector_documents.assert_called_once_with(vectors, use_certification_indices=True)
 
 
 if __name__ == '__main__':

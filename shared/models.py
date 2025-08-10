@@ -326,6 +326,16 @@ class VectorDocument:
     text: str
     vector_embedding: List[float]
     certification_type: CertificationType
+    certification_level: str = ""  # foundational, associate, professional, specialty
+    content_type: ContentType = ContentType.STUDY_GUIDE
+    category: str = ""
+    subcategory: Optional[str] = None
+    difficulty_level: DifficultyLevel = DifficultyLevel.INTERMEDIATE
+    tags: List[str] = field(default_factory=list)
+    source_file: str = ""
+    source_bucket: str = ""
+    chunk_size: int = 0
+    processed_at: datetime = field(default_factory=datetime.utcnow)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def validate(self) -> List[str]:
@@ -373,6 +383,16 @@ class VectorDocument:
             'text': self.text,
             'vector_embedding': self.vector_embedding,
             'certification_type': self.certification_type.value,
+            'certification_level': self.certification_level,
+            'content_type': self.content_type.value,
+            'category': self.category,
+            'subcategory': self.subcategory,
+            'difficulty_level': self.difficulty_level.value,
+            'tags': self.tags,
+            'source_file': self.source_file,
+            'source_bucket': self.source_bucket,
+            'chunk_size': self.chunk_size,
+            'processed_at': self.processed_at.isoformat(),
             'metadata': self.metadata
         }
 
@@ -386,6 +406,16 @@ class VectorDocument:
             text=data['text'],
             vector_embedding=data['vector_embedding'],
             certification_type=CertificationType(data['certification_type']),
+            certification_level=data.get('certification_level', ''),
+            content_type=ContentType(data.get('content_type', 'study_guide')),
+            category=data.get('category', ''),
+            subcategory=data.get('subcategory'),
+            difficulty_level=DifficultyLevel(data.get('difficulty_level', 'intermediate')),
+            tags=data.get('tags', []),
+            source_file=data.get('source_file', ''),
+            source_bucket=data.get('source_bucket', ''),
+            chunk_size=data.get('chunk_size', 0),
+            processed_at=datetime.fromisoformat(data.get('processed_at', datetime.utcnow().isoformat())),
             metadata=data.get('metadata', {})
         )
 
@@ -465,13 +495,13 @@ def get_certification_display_name(cert_type: CertificationType) -> str:
 
 def get_certification_level(cert_type: CertificationType) -> str:
     """
-    Get the certification level (Foundational, Associate, Professional, Specialty).
+    Get the certification level (foundational, associate, professional, specialty).
     
     Args:
         cert_type: CertificationType enum value
         
     Returns:
-        Certification level
+        Certification level in lowercase for consistency
     """
     foundational = [CertificationType.CCP, CertificationType.AIP]
     associate = [CertificationType.MLA, CertificationType.DEA, CertificationType.DVA, 
@@ -480,15 +510,15 @@ def get_certification_level(cert_type: CertificationType) -> str:
     specialty = [CertificationType.ANS, CertificationType.MLS, CertificationType.SCS]
     
     if cert_type in foundational:
-        return "Foundational"
+        return "foundational"
     elif cert_type in associate:
-        return "Associate"
+        return "associate"
     elif cert_type in professional:
-        return "Professional"
+        return "professional"
     elif cert_type in specialty:
-        return "Specialty"
+        return "specialty"
     else:
-        return "General"
+        return "general"
 
 
 def get_certifications_for_dropdown() -> List[Dict[str, str]]:
