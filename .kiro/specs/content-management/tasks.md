@@ -44,7 +44,7 @@
   - Write unit tests for progress calculation logic
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
-- [ ] 7. Enhance search service with certification-specific filtering
+- [x] 7. Enhance search service with certification-specific filtering
   - Extend existing search functionality to filter by certification_type first
   - Add certification-scoped search to prevent cross-certification content mixing
   - Implement fallback to "general" content when certification-specific results are insufficient
