@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 
 # API Configuration
-API_BASE_URL = "https://6x0amugsec.execute-api.us-east-1.amazonaws.com/prod"
+API_BASE_URL = "https://c73rm0n05i.execute-api.us-east-1.amazonaws.com/prod"
 
 class ProCertAuthTester:
     def __init__(self):
