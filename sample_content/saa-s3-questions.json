@@ -1,0 +1,102 @@
+{
+  "questions": [
+    {
+      "id": "saa-s3-001",
+      "question": "Which S3 storage class is most cost-effective for data that is accessed less than once per year?",
+      "options": [
+        "S3 Standard",
+        "S3 Standard-IA",
+        "S3 Glacier",
+        "S3 Glacier Deep Archive"
+      ],
+      "correct_answer": 3,
+      "explanation": "S3 Glacier Deep Archive is the most cost-effective storage class for data that is accessed less than once per year. It offers the lowest storage cost but has a retrieval time of 12 hours. It's designed for long-term backup and archive with very infrequent access.",
+      "difficulty": "intermediate",
+      "topics": ["S3", "Storage Classes", "Cost Optimization"],
+      "certification": "SAA",
+      "domain": "Storage",
+      "subdomain": "S3 Storage Classes"
+    },
+    {
+      "id": "saa-s3-002",
+      "question": "What is the maximum size of a single object that can be stored in Amazon S3?",
+      "options": [
+        "5 GB",
+        "5 TB",
+        "100 GB",
+        "1 TB"
+      ],
+      "correct_answer": 1,
+      "explanation": "The maximum size of a single object in Amazon S3 is 5 TB (terabytes). However, the largest object that can be uploaded in a single PUT operation is 5 GB. For objects larger than 5 GB, you must use multipart upload.",
+      "difficulty": "beginner",
+      "topics": ["S3", "Object Size Limits", "Multipart Upload"],
+      "certification": "SAA",
+      "domain": "Storage",
+      "subdomain": "S3 Limits"
+    },
+    {
+      "id": "saa-s3-003",
+      "question": "Which S3 feature automatically moves objects between storage classes based on access patterns?",
+      "options": [
+        "S3 Transfer Acceleration",
+        "S3 Lifecycle Management",
+        "S3 Cross-Region Replication",
+        "S3 Intelligent Tiering"
+      ],
+      "correct_answer": 3,
+      "explanation": "S3 Intelligent Tiering automatically moves objects between two access tiers (frequent and infrequent access) based on changing access patterns. It monitors access patterns and moves objects that haven't been accessed for 30 consecutive days to the infrequent access tier.",
+      "difficulty": "intermediate",
+      "topics": ["S3", "Intelligent Tiering", "Cost Optimization", "Storage Classes"],
+      "certification": "SAA",
+      "domain": "Storage",
+      "subdomain": "S3 Intelligent Tiering"
+    },
+    {
+      "id": "saa-s3-004",
+      "question": "What type of encryption does S3 use by default for new objects?",
+      "options": [
+        "No encryption",
+        "SSE-S3 (Server-Side Encryption with S3-Managed Keys)",
+        "SSE-KMS (Server-Side Encryption with KMS-Managed Keys)",
+        "SSE-C (Server-Side Encryption with Customer-Provided Keys)"
+      ],
+      "correct_answer": 1,
+      "explanation": "As of January 2023, Amazon S3 applies server-side encryption with S3-managed keys (SSE-S3) as the base level of encryption for new objects stored in S3 buckets. This means all new objects are automatically encrypted at rest by default.",
+      "difficulty": "intermediate",
+      "topics": ["S3", "Encryption", "Security", "SSE-S3"],
+      "certification": "SAA",
+      "domain": "Security",
+      "subdomain": "S3 Encryption"
+    },
+    {
+      "id": "saa-s3-005",
+      "question": "Which S3 feature can be used to automatically delete incomplete multipart uploads?",
+      "options": [
+        "Bucket Policies",
+        "Lifecycle Rules",
+        "CORS Configuration",
+        "Versioning"
+      ],
+      "correct_answer": 1,
+      "explanation": "S3 Lifecycle Rules can be configured to automatically delete incomplete multipart uploads after a specified number of days. This helps reduce storage costs by cleaning up incomplete uploads that may have been abandoned due to network issues or application failures.",
+      "difficulty": "advanced",
+      "topics": ["S3", "Lifecycle Rules", "Multipart Upload", "Cost Optimization"],
+      "certification": "SAA",
+      "domain": "Storage",
+      "subdomain": "S3 Lifecycle Management"
+    }
+  ],
+  "metadata": {
+    "certification": "SAA",
+    "domain": "Storage",
+    "subdomain": "S3",
+    "total_questions": 5,
+    "difficulty_distribution": {
+      "beginner": 1,
+      "intermediate": 3,
+      "advanced": 1
+    },
+    "created_date": "2025-01-08",
+    "version": "1.0"
+  }
+}

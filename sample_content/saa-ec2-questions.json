@@ -1,0 +1,102 @@
+{
+  "questions": [
+    {
+      "id": "saa-ec2-001",
+      "question": "Which EC2 instance type is optimized for compute-intensive applications that benefit from high-performance processors?",
+      "options": [
+        "General Purpose (t3, m5)",
+        "Compute Optimized (c5, c6i)",
+        "Memory Optimized (r5, x1e)",
+        "Storage Optimized (i3, d2)"
+      ],
+      "correct_answer": 1,
+      "explanation": "Compute Optimized instances (c5, c6i) are designed for compute-intensive applications that benefit from high-performance processors. They are ideal for batch processing workloads, media transcoding, high-performance web servers, high-performance computing (HPC), scientific modeling, dedicated gaming servers, and ad server engines.",
+      "difficulty": "intermediate",
+      "topics": ["EC2", "Instance Types", "Compute Optimization"],
+      "certification": "SAA",
+      "domain": "Compute",
+      "subdomain": "EC2"
+    },
+    {
+      "id": "saa-ec2-002",
+      "question": "What is the difference between EC2 Instance Store and EBS volumes?",
+      "options": [
+        "Instance Store is persistent, EBS is temporary",
+        "Instance Store is temporary, EBS is persistent",
+        "Both are persistent storage options",
+        "Both are temporary storage options"
+      ],
+      "correct_answer": 1,
+      "explanation": "Instance Store provides temporary block-level storage for EC2 instances. The data is lost when the instance is stopped, terminated, or fails. EBS (Elastic Block Store) provides persistent block storage volumes that persist independently of the life of an instance.",
+      "difficulty": "beginner",
+      "topics": ["EC2", "Storage", "EBS", "Instance Store"],
+      "certification": "SAA",
+      "domain": "Storage",
+      "subdomain": "EC2 Storage"
+    },
+    {
+      "id": "saa-ec2-003",
+      "question": "Which EC2 pricing model offers the highest discount for predictable workloads?",
+      "options": [
+        "On-Demand Instances",
+        "Spot Instances",
+        "Reserved Instances",
+        "Dedicated Hosts"
+      ],
+      "correct_answer": 2,
+      "explanation": "Reserved Instances provide the highest discount (up to 75%) for predictable workloads when you commit to a specific instance type in a particular region for a 1 or 3-year term. Spot Instances can offer higher discounts but are not suitable for predictable workloads due to their interruptible nature.",
+      "difficulty": "intermediate",
+      "topics": ["EC2", "Pricing", "Reserved Instances", "Cost Optimization"],
+      "certification": "SAA",
+      "domain": "Cost Optimization",
+      "subdomain": "EC2 Pricing"
+    },
+    {
+      "id": "saa-ec2-004",
+      "question": "What is the maximum number of EBS volumes that can be attached to a single EC2 instance?",
+      "options": [
+        "10 volumes",
+        "20 volumes",
+        "27 volumes",
+        "Unlimited"
+      ],
+      "correct_answer": 2,
+      "explanation": "A single EC2 instance can have a maximum of 27 EBS volumes attached to it. This includes the root volume. However, the actual number may be limited by the instance type and the operating system's ability to recognize the volumes.",
+      "difficulty": "advanced",
+      "topics": ["EC2", "EBS", "Storage Limits"],
+      "certification": "SAA",
+      "domain": "Storage",
+      "subdomain": "EBS Limits"
+    },
+    {
+      "id": "saa-ec2-005",
+      "question": "Which feature allows you to automatically replace unhealthy EC2 instances in an Auto Scaling group?",
+      "options": [
+        "Health Checks",
+        "Launch Templates",
+        "Scaling Policies",
+        "Load Balancer"
+      ],
+      "correct_answer": 0,
+      "explanation": "Health Checks in Auto Scaling groups monitor the health of EC2 instances and automatically replace instances that fail health checks. Auto Scaling can use EC2 health checks (default) or ELB health checks to determine instance health.",
+      "difficulty": "intermediate",
+      "topics": ["EC2", "Auto Scaling", "Health Checks", "High Availability"],
+      "certification": "SAA",
+      "domain": "Reliability",
+      "subdomain": "Auto Scaling"
+    }
+  ],
+  "metadata": {
+    "certification": "SAA",
+    "domain": "Compute",
+    "subdomain": "EC2",
+    "total_questions": 5,
+    "difficulty_distribution": {
+      "beginner": 1,
+      "intermediate": 3,
+      "advanced": 1
+    },
+    "created_date": "2025-01-08",
+    "version": "1.0"
+  }
+}

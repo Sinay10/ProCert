@@ -1,0 +1,102 @@
+{
+  "questions": [
+    {
+      "id": "dva-lambda-001",
+      "question": "What is the maximum execution timeout for an AWS Lambda function?",
+      "options": [
+        "5 minutes",
+        "10 minutes",
+        "15 minutes",
+        "30 minutes"
+      ],
+      "correct_answer": 2,
+      "explanation": "The maximum execution timeout for an AWS Lambda function is 15 minutes (900 seconds). This limit applies to all Lambda functions regardless of the runtime or memory configuration.",
+      "difficulty": "beginner",
+      "topics": ["Lambda", "Limits", "Execution Timeout"],
+      "certification": "DVA",
+      "domain": "Compute",
+      "subdomain": "Lambda Limits"
+    },
+    {
+      "id": "dva-lambda-002",
+      "question": "Which environment variable contains the name of the Lambda function handler?",
+      "options": [
+        "_HANDLER",
+        "LAMBDA_HANDLER",
+        "AWS_LAMBDA_FUNCTION_HANDLER",
+        "FUNCTION_HANDLER"
+      ],
+      "correct_answer": 0,
+      "explanation": "The _HANDLER environment variable contains the location of the handler, in the format file.method. For example, if your handler is in index.js and the method is handler, the value would be index.handler.",
+      "difficulty": "intermediate",
+      "topics": ["Lambda", "Environment Variables", "Handler"],
+      "certification": "DVA",
+      "domain": "Compute",
+      "subdomain": "Lambda Runtime"
+    },
+    {
+      "id": "dva-lambda-003",
+      "question": "What happens to the execution context of a Lambda function between invocations?",
+      "options": [
+        "It is always destroyed and recreated",
+        "It may be reused for subsequent invocations",
+        "It is cached for exactly 5 minutes",
+        "It depends on the runtime language"
+      ],
+      "correct_answer": 1,
+      "explanation": "Lambda may reuse the execution context from a previous invocation if one is available. This means that objects declared outside of the handler method may remain initialized, providing potential performance benefits. However, you should not assume the execution context will be reused.",
+      "difficulty": "intermediate",
+      "topics": ["Lambda", "Execution Context", "Performance", "Cold Start"],
+      "certification": "DVA",
+      "domain": "Compute",
+      "subdomain": "Lambda Execution Model"
+    },
+    {
+      "id": "dva-lambda-004",
+      "question": "Which AWS service can be used to orchestrate multiple Lambda functions in a workflow?",
+      "options": [
+        "AWS Batch",
+        "AWS Step Functions",
+        "Amazon SQS",
+        "AWS EventBridge"
+      ],
+      "correct_answer": 1,
+      "explanation": "AWS Step Functions is a serverless orchestration service that lets you combine AWS Lambda functions and other AWS services to build business-critical applications. It provides a visual workflow to orchestrate multiple Lambda functions and other services.",
+      "difficulty": "intermediate",
+      "topics": ["Lambda", "Step Functions", "Orchestration", "Serverless"],
+      "certification": "DVA",
+      "domain": "Application Integration",
+      "subdomain": "Step Functions"
+    },
+    {
+      "id": "dva-lambda-005",
+      "question": "What is the correct way to handle errors in a Lambda function to trigger a retry?",
+      "options": [
+        "Return an error object",
+        "Throw an exception or return a rejected promise",
+        "Set the context.fail() method",
+        "Use console.error() to log the error"
+      ],
+      "correct_answer": 1,
+      "explanation": "To signal an error in Lambda and trigger retry behavior (for asynchronous invocations), you should throw an exception (in most runtimes) or return a rejected promise (in Node.js). This will cause Lambda to retry the function according to the retry policy.",
+      "difficulty": "advanced",
+      "topics": ["Lambda", "Error Handling", "Retry Logic", "Exception Handling"],
+      "certification": "DVA",
+      "domain": "Compute",
+      "subdomain": "Lambda Error Handling"
+    }
+  ],
+  "metadata": {
+    "certification": "DVA",
+    "domain": "Compute",
+    "subdomain": "Lambda",
+    "total_questions": 5,
+    "difficulty_distribution": {
+      "beginner": 1,
+      "intermediate": 3,
+      "advanced": 1
+    },
+    "created_date": "2025-01-08",
+    "version": "1.0"
+  }
+}
