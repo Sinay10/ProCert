@@ -81,7 +81,7 @@ def lambda_authorizer_handler(event: Dict[str, Any], context: Any) -> Dict[str, 
                 'user_id': user_id,
                 'email': user_attributes.get('email', ''),
                 'name': user_attributes.get('name', ''),
-                'subscription_tier': user_attributes.get('custom:subscription_tier', 'free')
+                'subscription_tier': user_attributes.get('custom:subscription_tier', 'standard')
             }
             
             return policy
@@ -132,7 +132,7 @@ def extract_user_from_event(event: Dict[str, Any]) -> Optional[Dict[str, str]]:
         'user_id': authorizer.get('user_id', ''),
         'email': authorizer.get('email', ''),
         'name': authorizer.get('name', ''),
-        'subscription_tier': authorizer.get('subscription_tier', 'free')
+        'subscription_tier': authorizer.get('subscription_tier', 'standard')
     }
 
 
@@ -239,7 +239,7 @@ class JWTMiddleware:
                 'user_id': user_info['Username'],
                 'email': user_attributes.get('email', ''),
                 'name': user_attributes.get('name', ''),
-                'subscription_tier': user_attributes.get('custom:subscription_tier', 'free'),
+                'subscription_tier': user_attributes.get('custom:subscription_tier', 'standard'),
                 'email_verified': user_attributes.get('email_verified', 'false') == 'true'
             }
             

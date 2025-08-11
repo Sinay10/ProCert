@@ -115,7 +115,7 @@ class ProcertInfrastructureStack(Stack):
         # 3. DYNAMODB TABLES
         # Content metadata table with certification_type as part of partition key
         self.content_metadata_table = dynamodb.Table(self, "ContentMetadataTable",
-            table_name=f"procert-content-metadata-{self.account}",
+            table_name=f"procert-content-metadata-v2-{self.account}",
             partition_key=dynamodb.Attribute(
                 name="content_id",
                 type=dynamodb.AttributeType.STRING
@@ -319,8 +319,7 @@ class ProcertInfrastructureStack(Stack):
             ),
             # Custom attributes for certification preferences
             custom_attributes={
-                "target_certifications": cognito.StringAttribute(mutable=True),
-                "subscription_tier": cognito.StringAttribute(mutable=True)
+                "target_certs": cognito.StringAttribute(mutable=True)  # Shortened to fit 20-char limit
             }
         )
 
@@ -387,6 +386,28 @@ class ProcertInfrastructureStack(Stack):
             }
         )
 
+        # SAML Identity Provider for Midway integration (optional)
+        # Uncomment and configure when Midway SAML metadata is available
+        # midway_saml_provider = cognito.CfnUserPoolIdentityProvider(self, "MidwaySAMLProvider",
+        #     user_pool_id=self.user_pool.user_pool_id,
+        #     provider_name="Midway",
+        #     provider_type="SAML",
+        #     attribute_mapping={
+        #         "email": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+        #         "given_name": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname",
+        #         "family_name": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname"
+        #     },
+        #     provider_details={
+        #         "MetadataURL": "https://midway.amazon.com/saml/metadata",  # Replace with actual Midway metadata URL
+        #         "SSORedirectBindingURI": "https://midway.amazon.com/saml/sso",  # Replace with actual SSO URL
+        #         "SLORedirectBindingURI": "https://midway.amazon.com/saml/slo"   # Replace with actual SLO URL
+        #     }
+        # )
+
+        # Update User Pool Client to support federated sign-in
+        # When Midway is configured, update the client:
+        # self.user_pool_client.add_property_override("SupportedIdentityProviders", ["COGNITO", "Midway"])
+
         # Output Cognito details
         CfnOutput(self, "UserPoolId", value=self.user_pool.user_pool_id)
         CfnOutput(self, "UserPoolClientId", value=self.user_pool_client.user_pool_client_id)
@@ -395,11 +416,14 @@ class ProcertInfrastructureStack(Stack):
         # 5. OPENSEARCH SERVERLESS SETUP
         collection_name = "procert-vector-collection"
         access_policy_document = [{"Rules": [{"ResourceType": "collection", "Resource": [f"collection/{collection_name}"], "Permission": ["aoss:*"]}, {"ResourceType": "index", "Resource": [f"index/{collection_name}/*"], "Permission": ["aoss:*"]}], "Principal": [f"arn:aws:iam::{self.account}:root", ingestion_lambda.role.role_arn, f"arn:aws:iam::{self.account}:user/Admin1"], "Description": "Data access policy for ProCert"}]
-        access_policy = opensearchserverless.CfnAccessPolicy(self, "ProcertAccessPolicy", name="procert-access-policy", policy=json.dumps(access_policy_document), type="data")
+        # Use simple unique names (max 32 chars, pattern: ^[a-z][a-z0-9-]{2,31}$)
+        import time
+        suffix = str(int(time.time()))[-6:]  # Use timestamp suffix for uniqueness
+        access_policy = opensearchserverless.CfnAccessPolicy(self, "ProcertAccessPolicy", name=f"procert-access-{suffix}", policy=json.dumps(access_policy_document), type="data")
         
-        encryption_policy = opensearchserverless.CfnSecurityPolicy(self, "ProcertEncryptionPolicy", name="procert-encryption-policy", type="encryption", policy=json.dumps({"Rules": [{"ResourceType": "collection", "Resource": [f"collection/{collection_name}"]}], "AWSOwnedKey": True}))
+        encryption_policy = opensearchserverless.CfnSecurityPolicy(self, "ProcertEncryptionPolicy", name=f"procert-encrypt-{suffix}", type="encryption", policy=json.dumps({"Rules": [{"ResourceType": "collection", "Resource": [f"collection/{collection_name}"]}], "AWSOwnedKey": True}))
         
-        network_policy = opensearchserverless.CfnSecurityPolicy(self, "ProcertNetworkPolicy", name="procert-network-policy", type="network", policy=json.dumps([{"Rules": [{"ResourceType": "collection", "Resource": [f"collection/{collection_name}"]}, {"ResourceType": "dashboard", "Resource": [f"collection/{collection_name}"]}], "AllowFromPublic": True}]))
+        network_policy = opensearchserverless.CfnSecurityPolicy(self, "ProcertNetworkPolicy", name=f"procert-network-{suffix}", type="network", policy=json.dumps([{"Rules": [{"ResourceType": "collection", "Resource": [f"collection/{collection_name}"]}, {"ResourceType": "dashboard", "Resource": [f"collection/{collection_name}"]}], "AllowFromPublic": True}]))
         
         self.vector_collection = opensearchserverless.CfnCollection(self, "VectorCollection", name=collection_name, type="VECTORSEARCH")
         self.vector_collection.add_dependency(access_policy)
@@ -450,7 +474,7 @@ class ProcertInfrastructureStack(Stack):
                 bundling=BundlingOptions(
                     image=lambda_.Runtime.PYTHON_3_11.bundling_image,
                     entrypoint=["/bin/bash", "-c"],
-                    command=["pip install -r requirements.txt -t /asset-output && cp -au . /asset-output"]
+                    command=["pip install --platform manylinux2014_x86_64 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output"]
                 )
             )
         
