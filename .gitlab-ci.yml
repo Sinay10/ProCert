@@ -207,8 +207,8 @@ deploy:
     # Skip Docker bundling in CI deployment
     CI: "true"
   before_script:
-    # Install Python, Node.js, AWS CLI, and jq
-    - apk add --no-cache python3 py3-pip curl bash jq
+    # Install Python, Node.js, and AWS CLI
+    - apk add --no-cache python3 py3-pip curl bash
     - python3 -m venv .venv
     - source .venv/bin/activate
     - pip install -r requirements.txt
