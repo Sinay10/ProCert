@@ -81,6 +81,47 @@ cleanup_cognito() {
     done
 }
 
+# Function to delete OpenSearch Serverless policies
+cleanup_opensearch_policies() {
+    echo "🔍 Cleaning OpenSearch Serverless policies..."
+    
+    # Delete access policies
+    aws opensearchserverless list-access-policies --type data --query 'accessPolicySummaries[?contains(name, `procert`)].name' --output text | \
+    while read -r policy_name; do
+        if [ -n "$policy_name" ]; then
+            echo "Deleting access policy: $policy_name"
+            aws opensearchserverless delete-access-policy --name "$policy_name" --type data || true
+        fi
+    done
+    
+    # Delete security policies (encryption)
+    aws opensearchserverless list-security-policies --type encryption --query 'securityPolicySummaries[?contains(name, `procert`)].name' --output text | \
+    while read -r policy_name; do
+        if [ -n "$policy_name" ]; then
+            echo "Deleting encryption policy: $policy_name"
+            aws opensearchserverless delete-security-policy --name "$policy_name" --type encryption || true
+        fi
+    done
+    
+    # Delete security policies (network)
+    aws opensearchserverless list-security-policies --type network --query 'securityPolicySummaries[?contains(name, `procert`)].name' --output text | \
+    while read -r policy_name; do
+        if [ -n "$policy_name" ]; then
+            echo "Deleting network policy: $policy_name"
+            aws opensearchserverless delete-security-policy --name "$policy_name" --type network || true
+        fi
+    done
+    
+    # Delete collections
+    aws opensearchserverless list-collections --query 'collectionSummaries[?contains(name, `procert`)].name' --output text | \
+    while read -r collection_name; do
+        if [ -n "$collection_name" ]; then
+            echo "Deleting collection: $collection_name"
+            aws opensearchserverless delete-collection --name "$collection_name" || true
+        fi
+    done
+}
+
 # Function to delete failed CloudFormation stacks
 cleanup_cloudformation() {
     echo "☁️ Cleaning failed CloudFormation stacks..."
@@ -106,6 +147,7 @@ main() {
     cleanup_dynamodb
     cleanup_s3
     cleanup_cognito
+    cleanup_opensearch_policies
     
     echo "⏳ Waiting 30 seconds for resources to fully delete..."
     sleep 30
