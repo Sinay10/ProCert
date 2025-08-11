@@ -32,7 +32,7 @@ def cleanup_dynamodb_tables():
                 print(f"❌ Error deleting {table_name}: {str(e)}")
 
 def cleanup_s3_buckets():
-    """Delete S3 buckets and their contents"""
+    """Delete S3 buckets and their contents including versions"""
     print("\n📦 Cleaning up S3 buckets...")
     
     s3 = boto3.client('s3')
@@ -57,12 +57,34 @@ def cleanup_s3_buckets():
     for prefix in bucket_prefixes:
         bucket_name = f"{prefix}-{account_id}"
         try:
-            # Delete all objects first
-            response = s3.list_objects_v2(Bucket=bucket_name)
-            if 'Contents' in response:
-                objects = [{'Key': obj['Key']} for obj in response['Contents']]
-                s3.delete_objects(Bucket=bucket_name, Delete={'Objects': objects})
-                print(f"  Deleted {len(objects)} objects from {bucket_name}")
+            # Delete all object versions and delete markers
+            paginator = s3.get_paginator('list_object_versions')
+            for page in paginator.paginate(Bucket=bucket_name):
+                delete_list = []
+                
+                # Add versions
+                if 'Versions' in page:
+                    for version in page['Versions']:
+                        delete_list.append({
+                            'Key': version['Key'],
+                            'VersionId': version['VersionId']
+                        })
+                
+                # Add delete markers
+                if 'DeleteMarkers' in page:
+                    for marker in page['DeleteMarkers']:
+                        delete_list.append({
+                            'Key': marker['Key'],
+                            'VersionId': marker['VersionId']
+                        })
+                
+                # Delete in batches
+                if delete_list:
+                    s3.delete_objects(
+                        Bucket=bucket_name,
+                        Delete={'Objects': delete_list}
+                    )
+                    print(f"  Deleted {len(delete_list)} versions from {bucket_name}")
             
             # Delete the bucket
             s3.delete_bucket(Bucket=bucket_name)
