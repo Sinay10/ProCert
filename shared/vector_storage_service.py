@@ -18,15 +18,6 @@ from .models import (
     VectorDocument, ContentMetadata, CertificationType, ContentType, 
     DifficultyLevel, get_certification_level, validate_model
 )
-from .exceptions import (
-    VectorStorageException, OpenSearchException, ValidationException,
-    InitializationException, IndexException, create_storage_exception
-)
-from .retry_utils import retry_opensearch_operation, with_retries
-from .validation_utils import (
-    validate_string, validate_integer, validate_list, validate_embedding_vector,
-    sanitize_text_content
-)
 
 
 logger = logging.getLogger(__name__)
@@ -51,58 +42,23 @@ class VectorStorageService:
             opensearch_endpoint: OpenSearch serverless endpoint
             index_name: Base index name for vector storage
             region_name: AWS region name
-            
-        Raises:
-            ValidationException: If input parameters are invalid
-            InitializationException: If service initialization fails
         """
-        try:
-            # Validate input parameters
-            self.opensearch_endpoint = validate_string(
-                opensearch_endpoint, "opensearch_endpoint", min_length=1, max_length=500
-            )
-            self.base_index_name = validate_string(
-                index_name, "index_name", min_length=1, max_length=255,
-                pattern=r'^[a-z0-9\-_]+$'
-            )
-            self.region_name = validate_string(
-                region_name, "region_name", min_length=1, max_length=50
-            )
-            
-            # Initialize OpenSearch client with retry logic
-            self._init_opensearch_client()
-            
-            logger.info(f"VectorStorageService initialized with endpoint: {opensearch_endpoint}")
-            
-        except ValidationException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to initialize VectorStorageService: {e}")
-            raise InitializationException(f"VectorStorageService initialization failed: {str(e)}")
+        self.opensearch_endpoint = opensearch_endpoint
+        self.base_index_name = index_name
+        self.region_name = region_name
+        
+        # Initialize OpenSearch client
+        self._init_opensearch_client()
+        
+        logger.info(f"VectorStorageService initialized with endpoint: {opensearch_endpoint}")
     
     def _init_opensearch_client(self):
-        """Initialize OpenSearch client with proper authentication and error handling."""
+        """Initialize OpenSearch client with proper authentication."""
         try:
-            # Validate endpoint format
-            if not self.opensearch_endpoint.startswith('https://'):
-                raise ValidationException("OpenSearch endpoint must start with https://")
-            
             host = self.opensearch_endpoint.replace("https://", "")
-            if not host:
-                raise ValidationException("Invalid OpenSearch endpoint format")
-            
-            # Get AWS credentials with error handling
-            try:
-                credentials = boto3.Session().get_credentials()
-                if not credentials:
-                    raise InitializationException("AWS credentials not found")
-            except Exception as e:
-                raise InitializationException(f"Failed to get AWS credentials: {str(e)}")
-            
-            # Create authentication
+            credentials = boto3.Session().get_credentials()
             auth = AWSV4SignerAuth(credentials, self.region_name, 'aoss')
             
-            # Initialize OpenSearch client with enhanced configuration
             self.opensearch_client = OpenSearch(
                 hosts=[{'host': host, 'port': 443}],
                 http_auth=auth,
@@ -115,30 +71,13 @@ class VectorStorageService:
                 retry_on_timeout=True
             )
             
-            # Test connection with retry logic
-            self._test_opensearch_connectivity()
-            
+            # Test connection
+            self.opensearch_client.info()
             logger.info("OpenSearch client initialized successfully")
             
-        except ValidationException:
-            raise
-        except InitializationException:
-            raise
         except Exception as e:
             logger.error(f"Failed to initialize OpenSearch client: {e}")
-            raise InitializationException(f"OpenSearch client initialization failed: {str(e)}")
-    
-    @retry_opensearch_operation(max_retries=3)
-    def _test_opensearch_connectivity(self):
-        """Test OpenSearch connectivity with retry logic."""
-        try:
-            info_response = self.opensearch_client.info()
-            if not info_response:
-                raise OpenSearchException("OpenSearch info response is empty")
-            logger.debug(f"OpenSearch connectivity test successful: {info_response.get('version', {}).get('number', 'unknown')}")
-        except Exception as e:
-            logger.error(f"OpenSearch connectivity test failed: {e}")
-            raise OpenSearchException(f"Failed to connect to OpenSearch: {str(e)}")
+            raise
     
     def store_vector_documents(self, vector_docs: List[VectorDocument], 
                              use_certification_indices: bool = True) -> bool:

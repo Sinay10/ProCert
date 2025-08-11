@@ -20,15 +20,6 @@ from .models import (
     ContentType, CertificationType, DifficultyLevel, ProgressType,
     validate_model
 )
-from .exceptions import (
-    DynamoDBException, StorageException, ValidationException,
-    InputValidationException, create_storage_exception
-)
-from .retry_utils import retry_aws_operation, with_aws_retries
-from .validation_utils import (
-    validate_content_id, validate_user_id, validate_certification_type,
-    validate_string, validate_integer, sanitize_text_content
-)
 
 
 logger = logging.getLogger(__name__)
@@ -53,57 +44,17 @@ class StorageManager(IStorageManager):
             content_metadata_table_name: Name of the content metadata DynamoDB table
             user_progress_table_name: Name of the user progress DynamoDB table
             region_name: AWS region name
-            
-        Raises:
-            ValidationException: If table names are invalid
-            StorageException: If initialization fails
         """
-        try:
-            # Validate input parameters
-            self.content_metadata_table_name = validate_string(
-                content_metadata_table_name, "content_metadata_table_name", 
-                min_length=1, max_length=255
-            )
-            self.user_progress_table_name = validate_string(
-                user_progress_table_name, "user_progress_table_name", 
-                min_length=1, max_length=255
-            )
-            self.region_name = validate_string(
-                region_name, "region_name", min_length=1, max_length=50
-            )
-            
-            # Initialize DynamoDB client and resources with retry logic
-            self._initialize_dynamodb_resources()
-            
-            logger.info(f"StorageManager initialized with tables: {content_metadata_table_name}, {user_progress_table_name}")
-            
-        except InputValidationException as e:
-            logger.error(f"Invalid parameters for StorageManager initialization: {e}")
-            raise ValidationException(f"StorageManager initialization failed: {e.message}", details=e.details)
-        except Exception as e:
-            logger.error(f"Failed to initialize StorageManager: {e}")
-            raise StorageException(f"StorageManager initialization failed: {str(e)}")
-    
-    @retry_aws_operation(max_retries=3)
-    def _initialize_dynamodb_resources(self):
-        """Initialize DynamoDB resources with retry logic."""
-        try:
-            self.dynamodb = boto3.resource('dynamodb', region_name=self.region_name)
-            self.content_metadata_table = self.dynamodb.Table(self.content_metadata_table_name)
-            self.user_progress_table = self.dynamodb.Table(self.user_progress_table_name)
-            
-            # Test connectivity by describing tables
-            self.content_metadata_table.load()
-            self.user_progress_table.load()
-            
-        except ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code == 'ResourceNotFoundException':
-                raise StorageException(f"DynamoDB table not found: {e}")
-            else:
-                raise create_storage_exception('dynamodb', 'initialization', e)
-        except Exception as e:
-            raise StorageException(f"Failed to initialize DynamoDB resources: {str(e)}")
+        self.content_metadata_table_name = content_metadata_table_name
+        self.user_progress_table_name = user_progress_table_name
+        self.region_name = region_name
+        
+        # Initialize DynamoDB client and resources
+        self.dynamodb = boto3.resource('dynamodb', region_name=region_name)
+        self.content_metadata_table = self.dynamodb.Table(content_metadata_table_name)
+        self.user_progress_table = self.dynamodb.Table(user_progress_table_name)
+        
+        logger.info(f"StorageManager initialized with tables: {content_metadata_table_name}, {user_progress_table_name}")
     
     def store_content_metadata(self, metadata: ContentMetadata) -> str:
         """
@@ -116,123 +67,45 @@ class StorageManager(IStorageManager):
             Stored content ID
             
         Raises:
-            ValidationException: If metadata validation fails
-            DynamoDBException: If DynamoDB operation fails
-            StorageException: For other storage-related errors
+            ValueError: If metadata validation fails
+            RuntimeError: If DynamoDB operation fails
         """
-        if metadata is None:
-            raise ValidationException("Content metadata cannot be None")
-        
         try:
             # Validate metadata before storing
             validate_model(metadata)
             
-            # Additional input validation
-            validate_content_id(metadata.content_id)
-            validate_certification_type(metadata.certification_type)
-            
-            # Sanitize text fields
-            sanitized_metadata = self._sanitize_content_metadata(metadata)
-            
-            # Prepare item for DynamoDB with retry logic
-            item = self._prepare_metadata_item(sanitized_metadata)
+            # Prepare item for DynamoDB
+            item = self._prepare_metadata_item(metadata)
             
             # Check if content already exists for versioning
-            existing_content = self._get_existing_content_version_safe(
-                sanitized_metadata.content_id, 
-                sanitized_metadata.certification_type
-            )
+            existing_content = self._get_existing_content_version(metadata.content_id, metadata.certification_type)
             
             if existing_content:
                 # Increment version for existing content
                 item['version'] = self._increment_version(existing_content.get('version', '1.0'))
                 item['updated_at'] = datetime.utcnow().isoformat()
-                logger.info(f"Updating existing content {sanitized_metadata.content_id} to version {item['version']}")
+                logger.info(f"Updating existing content {metadata.content_id} to version {item['version']}")
             else:
                 # New content, use provided version or default
-                item['version'] = sanitized_metadata.version
-                logger.info(f"Creating new content {sanitized_metadata.content_id} version {item['version']}")
+                item['version'] = metadata.version
+                logger.info(f"Creating new content {metadata.content_id} version {item['version']}")
             
-            # Store in DynamoDB with retry logic
-            self._store_metadata_item_with_retry(item)
+            # Store in DynamoDB
+            response = self.content_metadata_table.put_item(Item=item)
             
-            logger.info(f"Successfully stored content metadata: {sanitized_metadata.content_id}")
-            return sanitized_metadata.content_id
+            logger.info(f"Successfully stored content metadata: {metadata.content_id}")
+            return metadata.content_id
             
-        except ValidationException:
-            raise  # Re-raise validation exceptions as-is
+        except ValueError as e:
+            logger.error(f"Validation error storing content metadata: {str(e)}")
+            raise
         except ClientError as e:
             error_code = e.response['Error']['Code']
             logger.error(f"DynamoDB error storing content metadata: {error_code} - {str(e)}")
-            raise create_storage_exception('dynamodb', 'store_content_metadata', e)
+            raise RuntimeError(f"Failed to store content metadata: {error_code}")
         except Exception as e:
             logger.error(f"Unexpected error storing content metadata: {str(e)}")
-            raise StorageException(f"Failed to store content metadata: {str(e)}")
-    
-    @retry_aws_operation(max_retries=3)
-    def _store_metadata_item_with_retry(self, item: Dict[str, Any]):
-        """Store metadata item with retry logic."""
-        try:
-            response = self.content_metadata_table.put_item(Item=item)
-            return response
-        except ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code in ['ValidationException', 'ConditionalCheckFailedException']:
-                # These are not retryable
-                raise
-            logger.warning(f"Retryable DynamoDB error in store operation: {error_code}")
-            raise
-    
-    def _sanitize_content_metadata(self, metadata: ContentMetadata) -> ContentMetadata:
-        """Sanitize content metadata fields."""
-        try:
-            # Create a copy with sanitized text fields
-            sanitized_title = sanitize_text_content(metadata.title)
-            sanitized_category = sanitize_text_content(metadata.category)
-            sanitized_subcategory = sanitize_text_content(metadata.subcategory) if metadata.subcategory else None
-            
-            # Validate sanitized fields
-            if not sanitized_title:
-                raise ValidationException("Content title cannot be empty after sanitization")
-            
-            if not sanitized_category:
-                raise ValidationException("Content category cannot be empty after sanitization")
-            
-            # Create new metadata instance with sanitized fields
-            return ContentMetadata(
-                content_id=metadata.content_id,
-                title=sanitized_title,
-                content_type=metadata.content_type,
-                certification_type=metadata.certification_type,
-                category=sanitized_category,
-                subcategory=sanitized_subcategory,
-                difficulty_level=metadata.difficulty_level,
-                tags=metadata.tags,
-                created_at=metadata.created_at,
-                updated_at=metadata.updated_at,
-                version=metadata.version,
-                source_file=metadata.source_file,
-                source_bucket=metadata.source_bucket,
-                chunk_count=metadata.chunk_count,
-                question_count=metadata.question_count
-            )
-            
-        except Exception as e:
-            logger.error(f"Error sanitizing content metadata: {e}")
-            raise ValidationException(f"Failed to sanitize content metadata: {str(e)}")
-    
-    def _get_existing_content_version_safe(self, content_id: str, certification_type: CertificationType) -> Optional[Dict[str, Any]]:
-        """Get existing content item for versioning with error handling."""
-        try:
-            return with_aws_retries(
-                self._get_existing_content_version,
-                content_id,
-                certification_type,
-                max_retries=2
-            )
-        except Exception as e:
-            logger.warning(f"Could not retrieve existing content version: {e}")
-            return None
+            raise RuntimeError(f"Failed to store content metadata: {str(e)}")
     
     def retrieve_content_by_id(self, content_id: str, certification_type: Optional[CertificationType] = None) -> Optional[ContentMetadata]:
         """

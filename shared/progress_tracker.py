@@ -19,16 +19,6 @@ from .models import (
     UserProgress, ContentMetadata, CertificationType, ProgressType,
     validate_model
 )
-from .exceptions import (
-    ProgressTrackingException, InteractionRecordingException, AnalyticsException,
-    DynamoDBException, ValidationException, create_storage_exception
-)
-from .retry_utils import retry_aws_operation, with_aws_retries
-from .validation_utils import (
-    validate_user_id, validate_content_id, validate_certification_type,
-    validate_integer, validate_float, validate_interaction_data,
-    sanitize_text_content
-)
 
 
 logger = logging.getLogger(__name__)
@@ -53,58 +43,17 @@ class ProgressTracker(IProgressTracker):
             user_progress_table_name: Name of the user progress DynamoDB table
             content_metadata_table_name: Name of the content metadata DynamoDB table
             region_name: AWS region name
-            
-        Raises:
-            ValidationException: If table names are invalid
-            ProgressTrackingException: If initialization fails
         """
-        try:
-            # Validate input parameters
-            from .validation_utils import validate_string
-            
-            self.user_progress_table_name = validate_string(
-                user_progress_table_name, "user_progress_table_name", 
-                min_length=1, max_length=255
-            )
-            self.content_metadata_table_name = validate_string(
-                content_metadata_table_name, "content_metadata_table_name", 
-                min_length=1, max_length=255
-            )
-            self.region_name = validate_string(
-                region_name, "region_name", min_length=1, max_length=50
-            )
-            
-            # Initialize DynamoDB resources with retry logic
-            self._initialize_dynamodb_resources()
-            
-            logger.info(f"ProgressTracker initialized with tables: {user_progress_table_name}, {content_metadata_table_name}")
-            
-        except ValidationException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to initialize ProgressTracker: {e}")
-            raise ProgressTrackingException(f"ProgressTracker initialization failed: {str(e)}")
-    
-    @retry_aws_operation(max_retries=3)
-    def _initialize_dynamodb_resources(self):
-        """Initialize DynamoDB resources with retry logic."""
-        try:
-            self.dynamodb = boto3.resource('dynamodb', region_name=self.region_name)
-            self.user_progress_table = self.dynamodb.Table(self.user_progress_table_name)
-            self.content_metadata_table = self.dynamodb.Table(self.content_metadata_table_name)
-            
-            # Test connectivity by describing tables
-            self.user_progress_table.load()
-            self.content_metadata_table.load()
-            
-        except ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code == 'ResourceNotFoundException':
-                raise ProgressTrackingException(f"DynamoDB table not found: {e}")
-            else:
-                raise create_storage_exception('dynamodb', 'initialization', e)
-        except Exception as e:
-            raise ProgressTrackingException(f"Failed to initialize DynamoDB resources: {str(e)}")
+        self.user_progress_table_name = user_progress_table_name
+        self.content_metadata_table_name = content_metadata_table_name
+        self.region_name = region_name
+        
+        # Initialize DynamoDB client and resources
+        self.dynamodb = boto3.resource('dynamodb', region_name=region_name)
+        self.user_progress_table = self.dynamodb.Table(user_progress_table_name)
+        self.content_metadata_table = self.dynamodb.Table(content_metadata_table_name)
+        
+        logger.info(f"ProgressTracker initialized with tables: {user_progress_table_name}, {content_metadata_table_name}")
     
     def record_interaction(self, user_id: str, content_id: str, interaction: InteractionData) -> bool:
         """
@@ -117,82 +66,15 @@ class ProgressTracker(IProgressTracker):
             
         Returns:
             True if successful, False otherwise
-            
-        Raises:
-            ValidationException: If input parameters are invalid
-            InteractionRecordingException: If recording fails
         """
         try:
-            # Validate input parameters
-            validated_user_id = validate_user_id(user_id)
-            validated_content_id = validate_content_id(content_id)
-            
-            if interaction is None:
-                raise ValidationException("Interaction data cannot be None")
-            
-            # Validate interaction data
-            self._validate_interaction_data(interaction)
-            
             # Get content metadata to determine certification type
-            content = self._get_content_metadata_safe(validated_content_id)
+            content = self._get_content_metadata(content_id)
             if not content:
-                raise InteractionRecordingException(
-                    f"Content not found for interaction recording: {validated_content_id}",
-                    error_code="CONTENT_NOT_FOUND"
-                )
+                logger.error(f"Content not found for interaction recording: {content_id}")
+                return False
             
-            # Create and validate UserProgress instance
-            user_progress = self._create_user_progress_from_interaction(
-                validated_user_id, validated_content_id, interaction
-            )
-            
-            # Record interaction with retry logic
-            success = self._record_interaction_with_retry(user_progress, content, interaction)
-            
-            if success:
-                logger.info(f"Successfully recorded interaction: {validated_user_id} -> {validated_content_id} ({interaction.interaction_type})")
-            
-            return success
-            
-        except ValidationException:
-            raise
-        except InteractionRecordingException:
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error recording interaction: {str(e)}")
-            raise InteractionRecordingException(f"Failed to record interaction: {str(e)}")
-    
-    def _validate_interaction_data(self, interaction: InteractionData):
-        """Validate interaction data with comprehensive checks."""
-        try:
-            # Validate interaction type
-            valid_types = ['view', 'viewed', 'answer', 'answered', 'complete', 'completed', 'finish', 'finished']
-            if interaction.interaction_type not in valid_types:
-                raise ValidationException(
-                    f"Invalid interaction type: {interaction.interaction_type}. Must be one of {valid_types}"
-                )
-            
-            # Validate score if provided
-            if interaction.score is not None:
-                validate_float(interaction.score, 'score', min_value=0.0, max_value=100.0, required=False)
-            
-            # Validate time spent
-            if interaction.time_spent is not None:
-                validate_integer(interaction.time_spent, 'time_spent', min_value=0, max_value=86400, required=False)
-            
-            # Validate additional data
-            if interaction.additional_data is not None and not isinstance(interaction.additional_data, dict):
-                raise ValidationException("additional_data must be a dictionary")
-                
-        except ValidationException:
-            raise
-        except Exception as e:
-            raise ValidationException(f"Interaction data validation failed: {str(e)}")
-    
-    def _create_user_progress_from_interaction(self, user_id: str, content_id: str, 
-                                             interaction: InteractionData) -> UserProgress:
-        """Create UserProgress instance from interaction data with validation."""
-        try:
+            # Create UserProgress instance from interaction data
             progress_type = self._map_interaction_to_progress_type(interaction.interaction_type)
             
             user_progress = UserProgress(
@@ -200,29 +82,32 @@ class ProgressTracker(IProgressTracker):
                 content_id=content_id,
                 progress_type=progress_type,
                 score=interaction.score,
-                time_spent=interaction.time_spent or 0,
+                time_spent=interaction.time_spent,
                 timestamp=datetime.utcnow(),
-                session_id=interaction.additional_data.get('session_id', '') if interaction.additional_data else ''
+                session_id=interaction.additional_data.get('session_id', '')
             )
             
-            # Validate the created progress object
+            # Validate progress data
             validate_model(user_progress)
-            return user_progress
             
-        except Exception as e:
-            raise ValidationException(f"Failed to create UserProgress from interaction: {str(e)}")
-    
-    @retry_aws_operation(max_retries=3)
-    def _record_interaction_with_retry(self, user_progress: UserProgress, 
-                                     content: ContentMetadata, interaction: InteractionData) -> bool:
-        """Record interaction with retry logic and duplicate handling."""
-        try:
             # Prepare composite sort key: content_id#certification_type#timestamp
             timestamp_str = user_progress.timestamp.isoformat()
-            content_id_cert_time = f"{user_progress.content_id}#{content.certification_type.value}#{timestamp_str}"
+            content_id_cert_time = f"{content_id}#{content.certification_type.value}#{timestamp_str}"
             
             # Prepare item for DynamoDB
-            item = self._prepare_progress_item(user_progress, content_id_cert_time, content, interaction)
+            item = {
+                'user_id': user_id,
+                'content_id_cert_time': content_id_cert_time,
+                'content_id': content_id,
+                'certification_type': content.certification_type.value,
+                'progress_type': progress_type.value,
+                'score': Decimal(str(interaction.score)) if interaction.score is not None else None,
+                'time_spent': interaction.time_spent,
+                'timestamp': timestamp_str,
+                'session_id': user_progress.session_id,
+                'interaction_type': interaction.interaction_type,
+                'additional_data': interaction.additional_data
+            }
             
             # Use conditional write to prevent duplicate interactions
             condition_expression = 'attribute_not_exists(content_id_cert_time)'
@@ -232,73 +117,26 @@ class ProgressTracker(IProgressTracker):
                     Item=item,
                     ConditionExpression=condition_expression
                 )
+                
+                logger.info(f"Successfully recorded interaction: {user_id} -> {content_id} ({interaction.interaction_type})")
                 return True
                 
             except ClientError as e:
                 if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
                     # Duplicate interaction, update existing record instead
-                    return self._update_existing_interaction_safe(
-                        user_progress.user_id, content_id_cert_time, interaction
-                    )
+                    return self._update_existing_interaction(user_id, content_id_cert_time, interaction)
                 else:
                     raise
-                    
+            
+        except ValueError as e:
+            logger.error(f"Validation error recording interaction: {str(e)}")
+            return False
         except ClientError as e:
             error_code = e.response['Error']['Code']
             logger.error(f"DynamoDB error recording interaction: {error_code} - {str(e)}")
-            raise create_storage_exception('dynamodb', 'record_interaction', e)
+            return False
         except Exception as e:
-            logger.error(f"Error in interaction recording: {str(e)}")
-            raise InteractionRecordingException(f"Failed to record interaction: {str(e)}")
-    
-    def _prepare_progress_item(self, user_progress: UserProgress, content_id_cert_time: str,
-                              content: ContentMetadata, interaction: InteractionData) -> Dict[str, Any]:
-        """Prepare progress item for DynamoDB storage."""
-        try:
-            item = {
-                'user_id': user_progress.user_id,
-                'content_id_cert_time': content_id_cert_time,
-                'content_id': user_progress.content_id,
-                'certification_type': content.certification_type.value,
-                'progress_type': user_progress.progress_type.value,
-                'score': Decimal(str(user_progress.score)) if user_progress.score is not None else None,
-                'time_spent': user_progress.time_spent,
-                'timestamp': user_progress.timestamp.isoformat(),
-                'session_id': user_progress.session_id,
-                'interaction_type': interaction.interaction_type,
-                'additional_data': interaction.additional_data or {}
-            }
-            
-            return item
-            
-        except Exception as e:
-            raise ValidationException(f"Failed to prepare progress item: {str(e)}")
-    
-    def _get_content_metadata_safe(self, content_id: str) -> Optional[ContentMetadata]:
-        """Get content metadata with error handling."""
-        try:
-            return with_aws_retries(
-                self._get_content_metadata,
-                content_id,
-                max_retries=2
-            )
-        except Exception as e:
-            logger.error(f"Failed to retrieve content metadata for {content_id}: {e}")
-            return None
-    
-    def _update_existing_interaction_safe(self, user_id: str, content_id_cert_time: str, 
-                                        interaction: InteractionData) -> bool:
-        """Update existing interaction record with error handling."""
-        try:
-            return with_aws_retries(
-                self._update_existing_interaction,
-                user_id,
-                content_id_cert_time,
-                interaction,
-                max_retries=2
-            )
-        except Exception as e:
-            logger.error(f"Failed to update existing interaction: {e}")
+            logger.error(f"Unexpected error recording interaction: {str(e)}")
             return False
     
     def get_user_progress(self, user_id: str, certification_type: Optional[CertificationType] = None) -> List[UserProgress]:

@@ -4,90 +4,33 @@ import os
 import json
 import boto3
 import re
-import traceback
 from urllib.parse import unquote_plus
 from pypdf import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
-from botocore.exceptions import ClientError, BotoCoreError
 
-# Global variables for AWS clients (initialized with error handling)
-s3_client = None
-bedrock_runtime = None
-opensearch_client = None
-opensearch_endpoint = None
-opensearch_index = None
+# Initialize AWS clients and get environment variables
+s3_client = boto3.client('s3')
+bedrock_runtime = boto3.client('bedrock-runtime')
+opensearch_endpoint = os.environ['OPENSEARCH_ENDPOINT']
+opensearch_index = os.environ['OPENSEARCH_INDEX']
 
-def initialize_aws_clients():
-    """Initialize AWS clients with comprehensive error handling."""
-    global s3_client, bedrock_runtime, opensearch_client, opensearch_endpoint, opensearch_index
-    
-    try:
-        # Get required environment variables
-        opensearch_endpoint = os.environ.get('OPENSEARCH_ENDPOINT')
-        opensearch_index = os.environ.get('OPENSEARCH_INDEX')
-        aws_region = os.environ.get('AWS_REGION', 'us-east-1')
-        
-        if not opensearch_endpoint:
-            raise ValueError("OPENSEARCH_ENDPOINT environment variable is required")
-        if not opensearch_index:
-            raise ValueError("OPENSEARCH_INDEX environment variable is required")
-        
-        # Initialize S3 client
-        try:
-            s3_client = boto3.client('s3', region_name=aws_region)
-        except Exception as e:
-            raise RuntimeError(f"Failed to initialize S3 client: {str(e)}")
-        
-        # Initialize Bedrock client
-        try:
-            bedrock_runtime = boto3.client('bedrock-runtime', region_name=aws_region)
-        except Exception as e:
-            raise RuntimeError(f"Failed to initialize Bedrock client: {str(e)}")
-        
-        # Initialize OpenSearch client
-        try:
-            host = opensearch_endpoint.replace("https://", "")
-            if not host:
-                raise ValueError("Invalid OpenSearch endpoint format")
-            
-            credentials = boto3.Session().get_credentials()
-            if not credentials:
-                raise RuntimeError("AWS credentials not found")
-            
-            auth = AWSV4SignerAuth(credentials, aws_region, 'aoss')
-            opensearch_client = OpenSearch(
-                hosts=[{'host': host, 'port': 443}],
-                http_auth=auth,
-                use_ssl=True,
-                verify_certs=True,
-                connection_class=RequestsHttpConnection,
-                pool_timeout=30,
-                timeout=30,
-                max_retries=3,
-                retry_on_timeout=True
-            )
-            
-            # Test OpenSearch connectivity
-            opensearch_client.info()
-            
-        except Exception as e:
-            raise RuntimeError(f"Failed to initialize OpenSearch client: {str(e)}")
-        
-        print("AWS clients initialized successfully")
-        
-    except Exception as e:
-        print(f"Critical error initializing AWS clients: {str(e)}")
-        raise
+# Remove https:// prefix for the client host
+host = opensearch_endpoint.replace("https://", "")
 
-# Initialize clients on module load
-try:
-    initialize_aws_clients()
-except Exception as e:
-    print(f"Failed to initialize AWS clients on module load: {e}")
-    # Don't raise here to allow Lambda to start, but clients will be None
+# Set up the OpenSearch client with SigV4 authentication
+credentials = boto3.Session().get_credentials()
+auth = AWSV4SignerAuth(credentials, os.environ['AWS_REGION'], 'aoss')
+opensearch_client = OpenSearch(
+    hosts=[{'host': host, 'port': 443}],
+    http_auth=auth,
+    use_ssl=True,
+    verify_certs=True,
+    connection_class=RequestsHttpConnection,
+    pool_timeout=30
+)
 
 def detect_certification_from_s3_context(bucket: str, key: str) -> str:
     """
@@ -761,392 +704,72 @@ def store_embeddings(chunks, embeddings, file_key, content_metadata):
 
 def handler(event, context):
     """
-    Enhanced Lambda handler with certification-aware content processing and comprehensive error handling.
+    Enhanced Lambda handler with certification-aware content processing.
     
     Processes S3 upload events with:
     - Multi-level certification detection (S3 context, filename, content)
     - Question/answer extraction with certification context
     - Automatic content classification and difficulty assessment
     - Structured metadata creation and storage
-    - Comprehensive error handling and retry logic
     """
-    # Initialize response structure
-    response = {
-        'statusCode': 200,
-        'body': json.dumps({'status': 'success', 'message': 'Processing completed'})
-    }
+    record = event['Records'][0]
+    bucket = record['s3']['bucket']['name']
+    key = unquote_plus(record['s3']['object']['key'])
     
+    print(f"Processing new file: s3://{bucket}/{key}")
+
     try:
-        # Validate event structure
-        if not event or 'Records' not in event or not event['Records']:
-            raise ValueError("Invalid event structure: missing Records")
-        
-        # Ensure AWS clients are initialized
-        if not _validate_aws_clients():
-            raise RuntimeError("AWS clients not properly initialized")
-        
-        # Extract S3 event information with validation
-        record = event['Records'][0]
-        bucket, key = _extract_s3_info(record)
-        
-        print(f"Processing new file: s3://{bucket}/{key}")
-        
-        # Process the document with comprehensive error handling
-        processing_result = _process_document_with_error_handling(bucket, key)
-        
-        if processing_result['success']:
-            print(f"Successfully processed document: {processing_result['content_id']}")
-            response['body'] = json.dumps({
-                'status': 'success',
-                'message': 'Document processed successfully',
-                'content_id': processing_result['content_id'],
-                'certification_type': processing_result['certification_type'],
-                'chunks_processed': processing_result['chunks_processed']
-            })
-        else:
-            print(f"Document processing failed: {processing_result['error']}")
-            response = {
-                'statusCode': 500,
-                'body': json.dumps({
-                    'status': 'error',
-                    'message': processing_result['error'],
-                    'error_type': processing_result.get('error_type', 'ProcessingError')
-                })
-            }
-        
-        return response
-        
-    except ValueError as e:
-        error_msg = f"Validation error: {str(e)}"
-        print(error_msg)
-        return {
-            'statusCode': 400,
-            'body': json.dumps({
-                'status': 'error',
-                'message': error_msg,
-                'error_type': 'ValidationError'
-            })
-        }
-        
-    except Exception as e:
-        error_msg = f"Unexpected error in Lambda handler: {str(e)}"
-        print(error_msg)
-        print(f"Traceback: {traceback.format_exc()}")
-        
-        return {
-            'statusCode': 500,
-            'body': json.dumps({
-                'status': 'error',
-                'message': error_msg,
-                'error_type': 'InternalError'
-            })
-        }
-
-
-def _validate_aws_clients() -> bool:
-    """Validate that all required AWS clients are initialized."""
-    global s3_client, bedrock_runtime, opensearch_client
-    
-    if not s3_client:
-        print("S3 client not initialized")
-        return False
-    if not bedrock_runtime:
-        print("Bedrock client not initialized")
-        return False
-    if not opensearch_client:
-        print("OpenSearch client not initialized")
-        return False
-    
-    return True
-
-
-def _extract_s3_info(record: Dict[str, Any]) -> Tuple[str, str]:
-    """Extract and validate S3 bucket and key from event record."""
-    try:
-        if 's3' not in record:
-            raise ValueError("Invalid record structure: missing s3 section")
-        
-        s3_info = record['s3']
-        
-        if 'bucket' not in s3_info or 'name' not in s3_info['bucket']:
-            raise ValueError("Invalid record structure: missing bucket name")
-        
-        if 'object' not in s3_info or 'key' not in s3_info['object']:
-            raise ValueError("Invalid record structure: missing object key")
-        
-        bucket = s3_info['bucket']['name']
-        key = unquote_plus(s3_info['object']['key'])
-        
-        # Validate bucket and key
-        if not bucket or not key:
-            raise ValueError("Empty bucket name or object key")
-        
-        # Basic security check for key
-        if '..' in key or key.startswith('/'):
-            raise ValueError("Invalid object key format")
-        
-        return bucket, key
-        
-    except Exception as e:
-        raise ValueError(f"Failed to extract S3 information: {str(e)}")
-
-
-def _process_document_with_error_handling(bucket: str, key: str) -> Dict[str, Any]:
-    """Process document with comprehensive error handling and retry logic."""
-    result = {
-        'success': False,
-        'error': None,
-        'error_type': None,
-        'content_id': None,
-        'certification_type': None,
-        'chunks_processed': 0
-    }
-    
-    try:
-        # Step 1: Extract text content with retry logic
-        document_text = _extract_text_with_retry(bucket, key)
+        # Extract text content
+        document_text = extract_text(bucket, key)
         if not document_text:
-            result['error'] = 'No text content could be extracted from the document'
-            result['error_type'] = 'ContentExtractionError'
-            return result
+            return {'statusCode': 200, 'body': json.dumps('No text to process.')}
         
         print(f"Extracted {len(document_text)} characters of text")
         
-        # Step 2: Multi-level certification detection with error handling
-        certification_result = _detect_certification_with_error_handling(bucket, key, document_text)
-        final_certification = certification_result['certification_type']
+        # Multi-level certification detection
+        print("Starting certification detection...")
+        
+        # 1. Detect from S3 context (bucket, path, tags)
+        cert_from_s3 = detect_certification_from_s3_context(bucket, key)
+        
+        # 2. Detect from document content
+        cert_from_content = detect_certification_from_content(document_text)
+        
+        # 3. Use S3 context if available, otherwise use content detection
+        final_certification = cert_from_s3 if cert_from_s3 != 'GENERAL' else cert_from_content
         
         print(f"Certification detection results:")
-        print(f"  - From S3 context: {certification_result['s3_detection']}")
-        print(f"  - From content: {certification_result['content_detection']}")
+        print(f"  - From S3 context: {cert_from_s3}")
+        print(f"  - From content: {cert_from_content}")
         print(f"  - Final decision: {final_certification}")
         
-        # Step 3: Extract questions and answers with error handling
-        extracted_questions = _extract_questions_with_error_handling(document_text, final_certification)
+        # Extract questions and answers with certification context
+        print("Extracting questions and answers...")
+        extracted_questions = extract_questions_and_answers(document_text, final_certification)
         
-        # Step 4: Classify content difficulty with fallback
-        difficulty_level = _classify_difficulty_with_fallback(document_text, final_certification)
+        # Classify content difficulty
+        difficulty_level = classify_content_difficulty(document_text, final_certification)
         
-        # Step 5: Determine content type
+        # Determine content type based on extracted questions
         content_type = 'practice_exam' if len(extracted_questions) > 5 else 'study_guide'
         
-        # Step 6: Create certification-aware content chunks with error handling
-        text_chunks = _create_chunks_with_error_handling(document_text, final_certification)
+        # Create certification-aware content chunks and embeddings
+        text_chunks = chunk_text_certification_aware(document_text, final_certification)
+        chunk_embeddings = get_embeddings(text_chunks)
         
-        # Step 7: Generate embeddings with retry logic
-        chunk_embeddings = _generate_embeddings_with_retry(text_chunks)
-        
-        # Step 8: Create and validate content metadata
-        content_metadata = _create_content_metadata_with_validation(
-            bucket, key, final_certification, content_type, difficulty_level, 
-            len(text_chunks), len(extracted_questions)
-        )
-        
-        # Step 9: Store embeddings with retry logic
-        storage_success = _store_embeddings_with_retry(
-            text_chunks, chunk_embeddings, key, content_metadata
-        )
-        
-        if storage_success:
-            result['success'] = True
-            result['content_id'] = content_metadata['content_id']
-            result['certification_type'] = final_certification
-            result['chunks_processed'] = len(text_chunks)
-        else:
-            result['error'] = 'Failed to store document embeddings'
-            result['error_type'] = 'StorageError'
-        
-        return result
-        
-    except Exception as e:
-        error_msg = f"Document processing failed: {str(e)}"
-        print(error_msg)
-        print(f"Traceback: {traceback.format_exc()}")
-        
-        result['error'] = error_msg
-        result['error_type'] = type(e).__name__
-        return result
-
-
-def _extract_text_with_retry(bucket: str, key: str, max_retries: int = 3) -> str:
-    """Extract text from document with retry logic."""
-    for attempt in range(max_retries):
-        try:
-            return extract_text(bucket, key)
-        except ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code in ['NoSuchKey', 'NoSuchBucket', 'AccessDenied']:
-                # These errors are not retryable
-                raise
-            
-            if attempt == max_retries - 1:
-                raise
-            
-            print(f"Text extraction attempt {attempt + 1} failed: {error_code}. Retrying...")
-            
-        except Exception as e:
-            if attempt == max_retries - 1:
-                raise
-            
-            print(f"Text extraction attempt {attempt + 1} failed: {str(e)}. Retrying...")
-    
-    return ""
-
-
-def _detect_certification_with_error_handling(bucket: str, key: str, document_text: str) -> Dict[str, str]:
-    """Detect certification type with comprehensive error handling."""
-    result = {
-        'certification_type': 'GENERAL',
-        's3_detection': 'GENERAL',
-        'content_detection': 'GENERAL'
-    }
-    
-    try:
-        # Detect from S3 context with error handling
-        try:
-            result['s3_detection'] = detect_certification_from_s3_context(bucket, key)
-        except Exception as e:
-            print(f"S3 context detection failed: {e}")
-            result['s3_detection'] = 'GENERAL'
-        
-        # Detect from document content with error handling
-        try:
-            result['content_detection'] = detect_certification_from_content(document_text)
-        except Exception as e:
-            print(f"Content detection failed: {e}")
-            result['content_detection'] = 'GENERAL'
-        
-        # Use S3 context if available, otherwise use content detection
-        result['certification_type'] = (
-            result['s3_detection'] if result['s3_detection'] != 'GENERAL' 
-            else result['content_detection']
-        )
-        
-    except Exception as e:
-        print(f"Certification detection failed: {e}")
-        result['certification_type'] = 'GENERAL'
-    
-    return result
-
-
-def _extract_questions_with_error_handling(document_text: str, certification_type: str) -> List[Dict[str, Any]]:
-    """Extract questions and answers with error handling."""
-    try:
-        return extract_questions_and_answers(document_text, certification_type)
-    except Exception as e:
-        print(f"Question extraction failed: {e}")
-        return []
-
-
-def _classify_difficulty_with_fallback(document_text: str, certification_type: str) -> str:
-    """Classify content difficulty with fallback logic."""
-    try:
-        return classify_content_difficulty(document_text, certification_type)
-    except Exception as e:
-        print(f"Difficulty classification failed: {e}")
-        # Fallback based on certification type
-        if certification_type in ['DOP', 'SAP', 'MLS', 'SCS', 'ANS']:
-            return 'advanced'
-        elif certification_type in ['CCP', 'AIP']:
-            return 'beginner'
-        else:
-            return 'intermediate'
-
-
-def _create_chunks_with_error_handling(document_text: str, certification_type: str) -> List[str]:
-    """Create text chunks with error handling."""
-    try:
-        return chunk_text_certification_aware(document_text, certification_type)
-    except Exception as e:
-        print(f"Certification-aware chunking failed: {e}. Falling back to basic chunking.")
-        try:
-            return chunk_text(document_text)
-        except Exception as e2:
-            print(f"Basic chunking also failed: {e2}")
-            # Last resort: split by paragraphs
-            chunks = document_text.split('\n\n')
-            return [chunk.strip() for chunk in chunks if chunk.strip()]
-
-
-def _generate_embeddings_with_retry(text_chunks: List[str], max_retries: int = 3) -> List[List[float]]:
-    """Generate embeddings with retry logic."""
-    for attempt in range(max_retries):
-        try:
-            return get_embeddings(text_chunks)
-        except ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code in ['ValidationException', 'AccessDeniedException']:
-                # These errors are not retryable
-                raise
-            
-            if attempt == max_retries - 1:
-                raise
-            
-            print(f"Embedding generation attempt {attempt + 1} failed: {error_code}. Retrying...")
-            
-        except Exception as e:
-            if attempt == max_retries - 1:
-                raise
-            
-            print(f"Embedding generation attempt {attempt + 1} failed: {str(e)}. Retrying...")
-    
-    return []
-
-
-def _create_content_metadata_with_validation(bucket: str, key: str, certification_type: str,
-                                           content_type: str, difficulty_level: str,
-                                           chunk_count: int, question_count: int) -> Dict[str, Any]:
-    """Create content metadata with validation."""
-    try:
+        # Create enhanced content metadata
         content_id = f"content-{key.replace('/', '-').replace('.', '-')}-{int(datetime.utcnow().timestamp())}"
         
-        # Validate content_id format
-        if not re.match(r'^[a-zA-Z0-9\-_]+$', content_id):
-            raise ValueError(f"Invalid content_id format: {content_id}")
-        
-        metadata = {
+        content_metadata = {
             'content_id': content_id,
             'title': os.path.basename(key),
             'content_type': content_type,
-            'certification_type': certification_type,
-            'category': _determine_category_from_certification(certification_type),
+            'certification_type': final_certification,
+            'category': _determine_category_from_certification(final_certification),
             'difficulty_level': difficulty_level,
             'source_file': key,
             'source_bucket': bucket,
             'created_at': datetime.utcnow().isoformat(),
-            'version': '1.0',
-            'chunk_count': chunk_count,
-            'question_count': question_count,
-            'tags': _generate_tags_from_certification(certification_type),
-            'extraction_method': 'certification_aware_processing'
-        }
-        
-        # Validate required fields
-        required_fields = ['content_id', 'title', 'content_type', 'certification_type']
-        for field in required_fields:
-            if not metadata.get(field):
-                raise ValueError(f"Required field '{field}' is missing or empty")
-        
-        return metadata
-        
-    except Exception as e:
-        raise ValueError(f"Failed to create content metadata: {str(e)}")
-
-
-def _store_embeddings_with_retry(text_chunks: List[str], embeddings: List[List[float]], 
-                                key: str, metadata: Dict[str, Any], max_retries: int = 3) -> bool:
-    """Store embeddings with retry logic."""
-    for attempt in range(max_retries):
-        try:
-            return store_embeddings_enhanced(text_chunks, embeddings, key, metadata)
-        except Exception as e:
-            if attempt == max_retries - 1:
-                print(f"Final storage attempt failed: {str(e)}")
-                return False
-            
-            print(f"Storage attempt {attempt + 1} failed: {str(e)}. Retrying...")
-    
-    return Falsemat(),
             'chunk_count': len(text_chunks),
             'question_count': len(extracted_questions),
             'extraction_method': 'enhanced_lambda_v2',

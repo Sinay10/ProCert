@@ -13,15 +13,6 @@ from .interfaces import ISearchService, SearchResult
 from .models import ContentMetadata, CertificationType
 from .vector_storage_service import VectorStorageService
 from .storage_manager import StorageManager
-from .exceptions import (
-    SearchException, QueryException, ValidationException,
-    BedrockException, OpenSearchException, InputValidationException
-)
-from .retry_utils import retry_with_backoff, with_retries
-from .validation_utils import (
-    validate_string, validate_integer, validate_certification_type,
-    validate_search_request, validate_search_filters, sanitize_text_content
-)
 
 
 logger = logging.getLogger(__name__)
@@ -45,42 +36,11 @@ class CertificationSearchService(ISearchService):
         Args:
             vector_service: VectorStorageService instance for semantic search
             storage_manager: StorageManager instance for metadata operations
-            
-        Raises:
-            ValidationException: If required services are not provided
-            SearchException: If initialization fails
         """
-        if vector_service is None:
-            raise ValidationException("VectorStorageService is required")
-        if storage_manager is None:
-            raise ValidationException("StorageManager is required")
+        self.vector_service = vector_service
+        self.storage_manager = storage_manager
         
-        try:
-            self.vector_service = vector_service
-            self.storage_manager = storage_manager
-            
-            # Test service connectivity
-            self._validate_service_connectivity()
-            
-            logger.info("CertificationSearchService initialized successfully")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize CertificationSearchService: {e}")
-            raise SearchException(f"Service initialization failed: {str(e)}")
-    
-    def _validate_service_connectivity(self):
-        """Validate that required services are accessible."""
-        try:
-            # Test vector service connectivity (this would be service-specific)
-            # For now, just check if the service has required attributes
-            if not hasattr(self.vector_service, 'search_by_certification'):
-                raise SearchException("VectorStorageService missing required methods")
-            
-            if not hasattr(self.storage_manager, 'retrieve_content_by_id'):
-                raise SearchException("StorageManager missing required methods")
-                
-        except Exception as e:
-            raise SearchException(f"Service connectivity validation failed: {str(e)}")
+        logger.info("CertificationSearchService initialized")
     
     def semantic_search(self, query: str, certification_type: Optional[CertificationType] = None,
                        filters: Dict[str, Any] = None, limit: int = 10) -> List[SearchResult]:
@@ -95,200 +55,58 @@ class CertificationSearchService(ISearchService):
             
         Returns:
             List of SearchResult instances ranked by relevance
-            
-        Raises:
-            ValidationException: If input parameters are invalid
-            QueryException: If query processing fails
-            SearchException: For other search-related errors
         """
         try:
-            # Validate and sanitize input parameters
-            validated_query = self._validate_search_input(query, certification_type, filters, limit)
+            # Generate query embedding
+            query_embedding = self._generate_query_embedding(query)
+            if not query_embedding:
+                logger.error("Failed to generate query embedding")
+                return []
             
-            # Generate query embedding with retry logic
-            query_embedding = self._generate_query_embedding_with_retry(validated_query['query'])
+            # Perform certification-scoped search
+            results = []
             
-            # Perform certification-scoped search with error handling
-            results = self._perform_search_with_fallback(
-                query_embedding=query_embedding,
-                certification_type=validated_query.get('certification_type'),
-                filters=validated_query.get('filters'),
-                limit=validated_query['limit']
-            )
-            
-            # Convert to SearchResult objects and enhance with metadata
-            search_results = self._convert_to_search_results_safe(results, validated_query['query'])
-            
-            # Apply post-processing and ranking
-            final_results = self._post_process_results_safe(
-                search_results, 
-                validated_query.get('certification_type'), 
-                validated_query.get('filters')
-            )
-            
-            logger.info(f"Semantic search completed: {len(final_results)} results for query '{query[:50]}...'")
-            return final_results[:validated_query['limit']]
-            
-        except ValidationException:
-            raise  # Re-raise validation exceptions as-is
-        except Exception as e:
-            logger.error(f"Error in semantic search: {e}")
-            raise SearchException(f"Semantic search failed: {str(e)}")
-    
-    def _validate_search_input(self, query: str, certification_type: Optional[CertificationType],
-                              filters: Optional[Dict[str, Any]], limit: int) -> Dict[str, Any]:
-        """Validate and sanitize search input parameters."""
-        try:
-            validated = {}
-            
-            # Validate query
-            validated['query'] = validate_string(
-                query, 'query', min_length=1, max_length=1000
-            )
-            validated['query'] = sanitize_text_content(validated['query'])
-            
-            if not validated['query']:
-                raise ValidationException("Query cannot be empty after sanitization")
-            
-            # Validate certification type
-            if certification_type is not None:
-                validated['certification_type'] = validate_certification_type(certification_type)
-            
-            # Validate limit
-            validated['limit'] = validate_integer(
-                limit, 'limit', min_value=1, max_value=100
-            )
-            
-            # Validate filters
-            if filters is not None:
-                validated['filters'] = validate_search_filters(filters)
-            
-            return validated
-            
-        except InputValidationException as e:
-            raise ValidationException(f"Invalid search parameters: {e.message}", details=e.details)
-    
-    @retry_with_backoff(max_retries=3, retryable_exceptions=(BedrockException,))
-    def _generate_query_embedding_with_retry(self, query: str) -> List[float]:
-        """Generate query embedding with retry logic."""
-        try:
-            embedding = self._generate_query_embedding(query)
-            if not embedding:
-                raise BedrockException("Failed to generate query embedding")
-            return embedding
-        except Exception as e:
-            logger.error(f"Error generating query embedding: {e}")
-            raise BedrockException(f"Query embedding generation failed: {str(e)}")
-    
-    def _perform_search_with_fallback(self, query_embedding: List[float],
-                                    certification_type: Optional[CertificationType],
-                                    filters: Optional[Dict[str, Any]], 
-                                    limit: int) -> List[Dict[str, Any]]:
-        """Perform search with fallback logic and error handling."""
-        results = []
-        
-        try:
             if certification_type:
                 # Search within specific certification
-                cert_results = self._search_certification_safe(
-                    query_embedding, certification_type, filters, limit
+                cert_results = self.vector_service.search_by_certification(
+                    query_embedding=query_embedding,
+                    certification_type=certification_type,
+                    filters=filters,
+                    limit=limit
                 )
                 results.extend(cert_results)
                 
                 # If insufficient results, fallback to general content
                 if len(cert_results) < limit // 2:
-                    try:
-                        general_results = self._search_certification_safe(
-                            query_embedding, CertificationType.GENERAL, filters, 
-                            limit - len(cert_results)
-                        )
-                        results.extend(general_results)
-                    except Exception as e:
-                        logger.warning(f"Fallback to general content failed: {e}")
+                    general_results = self.vector_service.search_by_certification(
+                        query_embedding=query_embedding,
+                        certification_type=CertificationType.GENERAL,
+                        filters=filters,
+                        limit=limit - len(cert_results)
+                    )
+                    results.extend(general_results)
             else:
                 # Search across all certifications
-                all_results = self._search_certification_safe(
-                    query_embedding, None, filters, limit
+                all_results = self.vector_service.search_by_certification(
+                    query_embedding=query_embedding,
+                    certification_type=None,
+                    filters=filters,
+                    limit=limit
                 )
                 results.extend(all_results)
             
-            return results
+            # Convert to SearchResult objects and enhance with metadata
+            search_results = self._convert_to_search_results(results, query)
+            
+            # Apply post-processing and ranking
+            final_results = self._post_process_results(search_results, certification_type, filters)
+            
+            logger.info(f"Semantic search completed: {len(final_results)} results for query '{query[:50]}...'")
+            return final_results[:limit]
             
         except Exception as e:
-            logger.error(f"Search operation failed: {e}")
-            raise SearchException(f"Search operation failed: {str(e)}")
-    
-    def _search_certification_safe(self, query_embedding: List[float],
-                                  certification_type: Optional[CertificationType],
-                                  filters: Optional[Dict[str, Any]], 
-                                  limit: int) -> List[Dict[str, Any]]:
-        """Perform certification search with error handling."""
-        try:
-            return with_retries(
-                self.vector_service.search_by_certification,
-                query_embedding=query_embedding,
-                certification_type=certification_type,
-                filters=filters,
-                limit=limit,
-                max_retries=2
-            )
-        except Exception as e:
-            logger.error(f"Certification search failed: {e}")
-            raise OpenSearchException(f"Vector search failed: {str(e)}")
-    
-    def _convert_to_search_results_safe(self, raw_results: List[Dict[str, Any]], 
-                                       query: str) -> List[SearchResult]:
-        """Convert raw search results to SearchResult objects with error handling."""
-        search_results = []
-        
-        for i, result in enumerate(raw_results):
-            try:
-                search_result = self._convert_single_result(result, query)
-                search_results.append(search_result)
-            except Exception as e:
-                logger.warning(f"Failed to convert search result {i}: {e}")
-                continue  # Skip invalid results
-        
-        return search_results
-    
-    def _convert_single_result(self, result: Dict[str, Any], query: str) -> SearchResult:
-        """Convert a single raw result to SearchResult with validation."""
-        try:
-            # Validate required fields
-            content_id = validate_string(result.get('content_id', ''), 'content_id', min_length=1)
-            text = sanitize_text_content(result.get('text', ''))
-            
-            if not text:
-                raise ValidationException("Result text cannot be empty")
-            
-            # Create SearchResult with validated data
-            return SearchResult(
-                content_id=content_id,
-                title=sanitize_text_content(result.get('metadata', {}).get('title', f"Content {content_id}")),
-                text=text,
-                score=float(result.get('score', 0.0)),
-                metadata={
-                    'certification_type': result.get('certification_type', 'GENERAL'),
-                    'certification_level': result.get('certification_level', ''),
-                    'category': sanitize_text_content(result.get('category', '')),
-                    'difficulty_level': result.get('difficulty_level', ''),
-                    'tags': result.get('tags', []),
-                    'chunk_index': result.get('chunk_index', 0),
-                    'source_index': result.get('index', '')
-                }
-            )
-        except Exception as e:
-            raise ValidationException(f"Invalid search result format: {str(e)}")
-    
-    def _post_process_results_safe(self, results: List[SearchResult], 
-                                  certification_type: Optional[CertificationType],
-                                  filters: Optional[Dict[str, Any]]) -> List[SearchResult]:
-        """Apply post-processing and re-ranking with error handling."""
-        try:
-            return self._post_process_results(results, certification_type, filters)
-        except Exception as e:
-            logger.warning(f"Post-processing failed, returning unprocessed results: {e}")
-            return results
+            logger.error(f"Error in semantic search: {e}")
+            return []
     
     def get_related_content(self, content_id: str, limit: int = 5) -> List[ContentMetadata]:
         """
