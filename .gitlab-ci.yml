@@ -223,11 +223,8 @@ deploy:
     - echo "Deploying ProCert infrastructure (Docker bundling skipped in CI)..."
     - source .venv/bin/activate
     - cdk bootstrap aws://$AWS_ACCOUNT_ID/$AWS_DEFAULT_REGION
-    - echo "Running pre-deployment cleanup..."
-    - chmod +x .gitlab/scripts/pre-deploy-cleanup.sh
-    - ./.gitlab/scripts/pre-deploy-cleanup.sh
     - echo "Attempting deployment..."
-    - cdk deploy --all --require-approval never
+    - cdk deploy --all --require-approval never || (echo "Deployment failed, attempting cleanup and retry..." && cdk destroy --all --force && sleep 30 && cdk deploy --all --require-approval never)
     - echo "Deployment completed successfully"
   environment:
     name: development
