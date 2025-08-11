@@ -468,6 +468,7 @@ class ProcertInfrastructureStack(Stack):
         # 8. LAMBDA AND CUSTOM RESOURCE TO CREATE THE OPENSEARCH INDEX
         # Index setup lambda with conditional bundling
         if skip_bundling:
+            # In CI, use simple asset bundling but ensure dependencies are available
             index_lambda_code = lambda_.Code.from_asset("index_setup_lambda_src")
         else:
             index_lambda_code = lambda_.Code.from_asset("index_setup_lambda_src",
