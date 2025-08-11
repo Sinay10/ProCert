@@ -1,5 +1,5 @@
 pypdf
 boto3
-opensearch-py
 langchain
 langchain-core
+# Note: urllib3 is available in Lambda runtime

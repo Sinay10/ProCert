@@ -6,7 +6,9 @@ import boto3
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Any
-from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
+import urllib3
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
 
 # Initialize clients and get environment variables
 bedrock_runtime = boto3.client('bedrock-runtime')
@@ -16,18 +18,27 @@ opensearch_index = os.environ['OPENSEARCH_INDEX']
 conversation_table_name = os.environ['CONVERSATION_TABLE']
 aws_region = os.environ['AWS_REGION']
 
-# Set up the OpenSearch client
-host = opensearch_endpoint.replace("https://", "")
-credentials = boto3.Session().get_credentials()
-auth = AWSV4SignerAuth(credentials, aws_region, 'aoss')
-opensearch_client = OpenSearch(
-    hosts=[{'host': host, 'port': 443}],
-    http_auth=auth,
-    use_ssl=True,
-    verify_certs=True,
-    connection_class=RequestsHttpConnection,
-    pool_timeout=30
-)
+def make_opensearch_request(endpoint, method, path, data=None):
+    """Make authenticated request to OpenSearch Serverless using boto3"""
+    url = f"{endpoint}{path}"
+    
+    # Create request
+    request = AWSRequest(method=method, url=url, data=data, headers={'Content-Type': 'application/json'})
+    
+    # Sign request
+    credentials = boto3.Session().get_credentials()
+    SigV4Auth(credentials, 'aoss', aws_region).add_auth(request)
+    
+    # Make request
+    http = urllib3.PoolManager()
+    response = http.request(
+        method,
+        request.url,
+        body=request.body,
+        headers=dict(request.headers)
+    )
+    
+    return response
 
 # DynamoDB table
 conversation_table = dynamodb.Table(conversation_table_name)
@@ -70,7 +81,19 @@ def search_opensearch(query_embedding: List[float], certification_type: Optional
         ]
     
     try:
-        response = opensearch_client.search(body=query, index=opensearch_index)
+        # Make search request
+        search_response = make_opensearch_request(
+            opensearch_endpoint,
+            'POST',
+            f'/{opensearch_index}/_search',
+            json.dumps(query).encode('utf-8')
+        )
+        
+        if search_response.status != 200:
+            print(f"OpenSearch search failed: {search_response.status} - {search_response.data}")
+            return "", []
+        
+        response = json.loads(search_response.data.decode('utf-8'))
         
         # Build structured context with metadata
         context_parts = []

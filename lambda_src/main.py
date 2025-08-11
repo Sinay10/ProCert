@@ -7,7 +7,9 @@ import re
 from urllib.parse import unquote_plus
 from pypdf import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
+import urllib3
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -17,20 +19,27 @@ bedrock_runtime = boto3.client('bedrock-runtime')
 opensearch_endpoint = os.environ['OPENSEARCH_ENDPOINT']
 opensearch_index = os.environ['OPENSEARCH_INDEX']
 
-# Remove https:// prefix for the client host
-host = opensearch_endpoint.replace("https://", "")
-
-# Set up the OpenSearch client with SigV4 authentication
-credentials = boto3.Session().get_credentials()
-auth = AWSV4SignerAuth(credentials, os.environ['AWS_REGION'], 'aoss')
-opensearch_client = OpenSearch(
-    hosts=[{'host': host, 'port': 443}],
-    http_auth=auth,
-    use_ssl=True,
-    verify_certs=True,
-    connection_class=RequestsHttpConnection,
-    pool_timeout=30
-)
+def make_opensearch_request(endpoint, method, path, data=None):
+    """Make authenticated request to OpenSearch Serverless using boto3"""
+    url = f"{endpoint}{path}"
+    
+    # Create request
+    request = AWSRequest(method=method, url=url, data=data, headers={'Content-Type': 'application/json'})
+    
+    # Sign request
+    credentials = boto3.Session().get_credentials()
+    SigV4Auth(credentials, 'aoss', os.environ['AWS_REGION']).add_auth(request)
+    
+    # Make request
+    http = urllib3.PoolManager()
+    response = http.request(
+        method,
+        request.url,
+        body=request.body,
+        headers=dict(request.headers)
+    )
+    
+    return response
 
 def detect_certification_from_s3_context(bucket: str, key: str) -> str:
     """
@@ -668,7 +677,18 @@ def store_embeddings_fallback(chunks, embeddings, file_key, content_metadata):
         }
         
         try:
-            opensearch_client.index(index=opensearch_index, body=document)
+            # Index document using HTTP request
+            index_response = make_opensearch_request(
+                opensearch_endpoint,
+                'POST',
+                f'/{opensearch_index}/_doc',
+                json.dumps(document).encode('utf-8')
+            )
+            
+            if index_response.status not in [200, 201]:
+                print(f"Error indexing chunk {i}: {index_response.status} - {index_response.data}")
+                continue
+                
         except Exception as e:
             print(f"Error indexing chunk {i}: {e}")
             # Continue with other chunks even if one fails
