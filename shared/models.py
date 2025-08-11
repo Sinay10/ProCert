@@ -807,7 +807,7 @@ class UserProfile:
     created_at: datetime = field(default_factory=datetime.utcnow)
     last_active: datetime = field(default_factory=datetime.utcnow)
     is_active: bool = True
-    subscription_tier: str = "standard"  # all users have full access
+    subscription_tier: str = "free"  # free, premium, enterprise
     timezone: str = "UTC"
     language: str = "en"
     profile_completion: float = 0.0  # percentage of profile completed
@@ -834,8 +834,8 @@ class UserProfile:
         if len(self.name) > 100:
             errors.append("name cannot exceed 100 characters")
         
-        if self.subscription_tier not in ['standard']:
-            errors.append("subscription_tier must be 'standard'")
+        if self.subscription_tier not in ['free', 'premium', 'enterprise']:
+            errors.append("subscription_tier must be 'free', 'premium', or 'enterprise'")
         
         if self.profile_completion < 0 or self.profile_completion > 100:
             errors.append("profile_completion must be between 0 and 100")
@@ -918,7 +918,7 @@ class UserProfile:
             created_at=datetime.fromisoformat(data['created_at']),
             last_active=datetime.fromisoformat(data['last_active']),
             is_active=data.get('is_active', True),
-            subscription_tier=data.get('subscription_tier', 'standard'),
+            subscription_tier=data.get('subscription_tier', 'free'),
             timezone=data.get('timezone', 'UTC'),
             language=data.get('language', 'en'),
             profile_completion=data.get('profile_completion', 0.0),

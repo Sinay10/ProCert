@@ -110,7 +110,8 @@ def handle_register(request_body: Dict[str, Any]) -> Dict[str, Any]:
                     {'Name': 'email_verified', 'Value': 'true'},
                     {'Name': 'given_name', 'Value': given_name},
                     {'Name': 'family_name', 'Value': family_name},
-                    {'Name': 'custom:target_certs', 'Value': ','.join(target_certifications)}
+                    {'Name': 'custom:target_certifications', 'Value': ','.join(target_certifications)},
+                    {'Name': 'custom:subscription_tier', 'Value': 'free'}
                 ],
                 TemporaryPassword=password,
                 MessageAction='SUPPRESS'  # Don't send welcome email
@@ -158,7 +159,7 @@ def handle_register(request_body: Dict[str, Any]) -> Dict[str, Any]:
             'created_at': datetime.utcnow().isoformat(),
             'last_active': datetime.utcnow().isoformat(),
             'is_active': True,
-            'subscription_tier': 'standard',
+            'subscription_tier': 'free',
             'timezone': 'UTC',
             'language': 'en',
             'profile_completion': calculate_profile_completion({
