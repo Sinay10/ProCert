@@ -708,7 +708,7 @@ def validate_certification_code(code: str) -> bool:
 
 
 # Validation helper functions
-def validate_model(model: Union[ContentMetadata, QuestionAnswer, UserProgress, VectorDocument]) -> bool:
+def validate_model(model: Union[ContentMetadata, QuestionAnswer, UserProgress, VectorDocument, 'UserProfile']) -> bool:
     """
     Validate any model instance.
     
@@ -727,7 +727,210 @@ def validate_model(model: Union[ContentMetadata, QuestionAnswer, UserProgress, V
     return True
 
 
-def validate_models(models: List[Union[ContentMetadata, QuestionAnswer, UserProgress, VectorDocument]]) -> bool:
+@dataclass
+class StudyPreferences:
+    """
+    Model for user study preferences and settings.
+    """
+    daily_goal_minutes: int = 30
+    preferred_difficulty: DifficultyLevel = DifficultyLevel.INTERMEDIATE
+    notification_settings: Dict[str, bool] = field(default_factory=lambda: {
+        'quiz_reminders': True,
+        'study_reminders': True,
+        'achievement_notifications': True,
+        'weekly_progress': True
+    })
+    preferred_study_time: str = "evening"  # morning, afternoon, evening
+    quiz_length_preference: int = 10  # default number of questions
+    auto_advance_difficulty: bool = True
+
+    def validate(self) -> List[str]:
+        """Validate study preferences."""
+        errors = []
+        
+        if self.daily_goal_minutes < 0 or self.daily_goal_minutes > 480:  # max 8 hours
+            errors.append("daily_goal_minutes must be between 0 and 480")
+        
+        if self.preferred_study_time not in ['morning', 'afternoon', 'evening']:
+            errors.append("preferred_study_time must be 'morning', 'afternoon', or 'evening'")
+        
+        if self.quiz_length_preference < 5 or self.quiz_length_preference > 50:
+            errors.append("quiz_length_preference must be between 5 and 50")
+        
+        return errors
+
+    def is_valid(self) -> bool:
+        """Check if study preferences are valid."""
+        return len(self.validate()) == 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            'daily_goal_minutes': self.daily_goal_minutes,
+            'preferred_difficulty': self.preferred_difficulty.value,
+            'notification_settings': self.notification_settings,
+            'preferred_study_time': self.preferred_study_time,
+            'quiz_length_preference': self.quiz_length_preference,
+            'auto_advance_difficulty': self.auto_advance_difficulty
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'StudyPreferences':
+        """Create instance from dictionary."""
+        return cls(
+            daily_goal_minutes=data.get('daily_goal_minutes', 30),
+            preferred_difficulty=DifficultyLevel(data.get('preferred_difficulty', 'intermediate')),
+            notification_settings=data.get('notification_settings', {
+                'quiz_reminders': True,
+                'study_reminders': True,
+                'achievement_notifications': True,
+                'weekly_progress': True
+            }),
+            preferred_study_time=data.get('preferred_study_time', 'evening'),
+            quiz_length_preference=data.get('quiz_length_preference', 10),
+            auto_advance_difficulty=data.get('auto_advance_difficulty', True)
+        )
+
+
+@dataclass
+class UserProfile:
+    """
+    Model for user profile and account information.
+    
+    Represents user account data, preferences, and certification goals.
+    """
+    user_id: str
+    email: str
+    name: str
+    target_certifications: List[CertificationType] = field(default_factory=list)
+    study_preferences: StudyPreferences = field(default_factory=StudyPreferences)
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    last_active: datetime = field(default_factory=datetime.utcnow)
+    is_active: bool = True
+    subscription_tier: str = "free"  # free, premium, enterprise
+    timezone: str = "UTC"
+    language: str = "en"
+    profile_completion: float = 0.0  # percentage of profile completed
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def validate(self) -> List[str]:
+        """Validate user profile data."""
+        errors = []
+        
+        if not self.user_id or not self.user_id.strip():
+            errors.append("user_id is required and cannot be empty")
+        
+        if not self.email or not self.email.strip():
+            errors.append("email is required and cannot be empty")
+        
+        # Basic email validation
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, self.email):
+            errors.append("email must be a valid email address")
+        
+        if not self.name or not self.name.strip():
+            errors.append("name is required and cannot be empty")
+        
+        if len(self.name) > 100:
+            errors.append("name cannot exceed 100 characters")
+        
+        if self.subscription_tier not in ['free', 'premium', 'enterprise']:
+            errors.append("subscription_tier must be 'free', 'premium', or 'enterprise'")
+        
+        if self.profile_completion < 0 or self.profile_completion > 100:
+            errors.append("profile_completion must be between 0 and 100")
+        
+        # Validate study preferences
+        pref_errors = self.study_preferences.validate()
+        if pref_errors:
+            errors.extend([f"Study preferences: {error}" for error in pref_errors])
+        
+        return errors
+
+    def is_valid(self) -> bool:
+        """Check if user profile is valid."""
+        return len(self.validate()) == 0
+
+    def add_target_certification(self, cert_type: CertificationType) -> None:
+        """Add a target certification if not already present."""
+        if cert_type not in self.target_certifications:
+            self.target_certifications.append(cert_type)
+            self.update_profile_completion()
+
+    def remove_target_certification(self, cert_type: CertificationType) -> None:
+        """Remove a target certification."""
+        if cert_type in self.target_certifications:
+            self.target_certifications.remove(cert_type)
+            self.update_profile_completion()
+
+    def update_last_active(self) -> None:
+        """Update the last active timestamp."""
+        self.last_active = datetime.utcnow()
+
+    def update_profile_completion(self) -> None:
+        """Calculate and update profile completion percentage."""
+        completion_factors = {
+            'has_name': bool(self.name and self.name.strip()),
+            'has_email': bool(self.email and self.email.strip()),
+            'has_target_certifications': len(self.target_certifications) > 0,
+            'has_study_preferences': bool(self.study_preferences.daily_goal_minutes > 0),
+            'has_timezone': bool(self.timezone != "UTC")
+        }
+        
+        completed_factors = sum(1 for completed in completion_factors.values() if completed)
+        self.profile_completion = (completed_factors / len(completion_factors)) * 100
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            'user_id': self.user_id,
+            'email': self.email,
+            'name': self.name,
+            'target_certifications': [cert.value for cert in self.target_certifications],
+            'study_preferences': self.study_preferences.to_dict(),
+            'created_at': self.created_at.isoformat(),
+            'last_active': self.last_active.isoformat(),
+            'is_active': self.is_active,
+            'subscription_tier': self.subscription_tier,
+            'timezone': self.timezone,
+            'language': self.language,
+            'profile_completion': self.profile_completion,
+            'metadata': self.metadata
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'UserProfile':
+        """Create instance from dictionary."""
+        target_certs = []
+        for cert_str in data.get('target_certifications', []):
+            try:
+                target_certs.append(CertificationType(cert_str))
+            except ValueError:
+                # Skip invalid certification types
+                continue
+        
+        profile = cls(
+            user_id=data['user_id'],
+            email=data['email'],
+            name=data['name'],
+            target_certifications=target_certs,
+            study_preferences=StudyPreferences.from_dict(data.get('study_preferences', {})),
+            created_at=datetime.fromisoformat(data['created_at']),
+            last_active=datetime.fromisoformat(data['last_active']),
+            is_active=data.get('is_active', True),
+            subscription_tier=data.get('subscription_tier', 'free'),
+            timezone=data.get('timezone', 'UTC'),
+            language=data.get('language', 'en'),
+            profile_completion=data.get('profile_completion', 0.0),
+            metadata=data.get('metadata', {})
+        )
+        
+        # Recalculate profile completion to ensure accuracy
+        profile.update_profile_completion()
+        return profile
+
+
+def validate_models(models: List[Union[ContentMetadata, QuestionAnswer, UserProgress, VectorDocument, 'UserProfile']]) -> bool:
     """
     Validate a list of model instances.
     
