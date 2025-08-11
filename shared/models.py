@@ -555,6 +555,141 @@ def _get_sort_order(cert_type: CertificationType) -> int:
     return level_order.get(get_certification_level(cert_type), 5)
 
 
+@dataclass
+class ConversationMessage:
+    """
+    Model for individual messages in a conversation.
+    """
+    role: str  # 'user' or 'assistant'
+    content: str
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+    sources: List[str] = field(default_factory=list)
+    mode_used: Optional[str] = None  # 'rag' or 'enhanced'
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def validate(self) -> List[str]:
+        """Validate the conversation message."""
+        errors = []
+        
+        if not self.role or self.role not in ['user', 'assistant']:
+            errors.append("role must be 'user' or 'assistant'")
+        
+        if not self.content or not self.content.strip():
+            errors.append("content is required and cannot be empty")
+        
+        if self.mode_used and self.mode_used not in ['rag', 'enhanced']:
+            errors.append("mode_used must be 'rag' or 'enhanced' if specified")
+        
+        return errors
+
+    def is_valid(self) -> bool:
+        """Check if the conversation message is valid."""
+        return len(self.validate()) == 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            'role': self.role,
+            'content': self.content,
+            'timestamp': self.timestamp.isoformat(),
+            'sources': self.sources,
+            'mode_used': self.mode_used,
+            'metadata': self.metadata
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ConversationMessage':
+        """Create instance from dictionary."""
+        return cls(
+            role=data['role'],
+            content=data['content'],
+            timestamp=datetime.fromisoformat(data['timestamp']),
+            sources=data.get('sources', []),
+            mode_used=data.get('mode_used'),
+            metadata=data.get('metadata', {})
+        )
+
+
+@dataclass
+class ConversationContext:
+    """
+    Model for conversation context and message history.
+    """
+    conversation_id: str
+    user_id: str
+    messages: List[ConversationMessage] = field(default_factory=list)
+    certification_context: Optional[str] = None
+    preferred_mode: str = "rag"  # 'rag' or 'enhanced'
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)
+    ttl: int = field(default_factory=lambda: int((datetime.utcnow().timestamp() + 86400 * 7)))  # 7 days TTL
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def validate(self) -> List[str]:
+        """Validate the conversation context."""
+        errors = []
+        
+        if not self.conversation_id or not self.conversation_id.strip():
+            errors.append("conversation_id is required and cannot be empty")
+        
+        if not self.user_id or not self.user_id.strip():
+            errors.append("user_id is required and cannot be empty")
+        
+        if self.preferred_mode not in ['rag', 'enhanced']:
+            errors.append("preferred_mode must be 'rag' or 'enhanced'")
+        
+        # Validate all messages
+        for i, message in enumerate(self.messages):
+            message_errors = message.validate()
+            if message_errors:
+                errors.extend([f"Message {i}: {error}" for error in message_errors])
+        
+        return errors
+
+    def is_valid(self) -> bool:
+        """Check if the conversation context is valid."""
+        return len(self.validate()) == 0
+
+    def add_message(self, message: ConversationMessage) -> None:
+        """Add a message to the conversation."""
+        self.messages.append(message)
+        self.updated_at = datetime.utcnow()
+
+    def get_recent_context(self, max_messages: int = 10) -> List[ConversationMessage]:
+        """Get recent messages for context."""
+        return self.messages[-max_messages:] if len(self.messages) > max_messages else self.messages
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            'conversation_id': self.conversation_id,
+            'user_id': self.user_id,
+            'messages': [msg.to_dict() for msg in self.messages],
+            'certification_context': self.certification_context,
+            'preferred_mode': self.preferred_mode,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
+            'ttl': self.ttl,
+            'metadata': self.metadata
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ConversationContext':
+        """Create instance from dictionary."""
+        messages = [ConversationMessage.from_dict(msg_data) for msg_data in data.get('messages', [])]
+        return cls(
+            conversation_id=data['conversation_id'],
+            user_id=data['user_id'],
+            messages=messages,
+            certification_context=data.get('certification_context'),
+            preferred_mode=data.get('preferred_mode', 'rag'),
+            created_at=datetime.fromisoformat(data['created_at']),
+            updated_at=datetime.fromisoformat(data['updated_at']),
+            ttl=data.get('ttl', int((datetime.utcnow().timestamp() + 86400 * 7))),
+            metadata=data.get('metadata', {})
+        )
+
+
 def validate_certification_code(code: str) -> bool:
     """
     Validate if a certification code is valid.

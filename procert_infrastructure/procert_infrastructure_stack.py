@@ -198,9 +198,37 @@ class ProcertInfrastructureStack(Stack):
             )
         )
 
+        # Conversation context table for chatbot
+        self.conversation_table = dynamodb.Table(self, "ConversationTable",
+            table_name=f"procert-conversations-{self.account}",
+            partition_key=dynamodb.Attribute(
+                name="conversation_id",
+                type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.RETAIN,
+            point_in_time_recovery=True,
+            encryption=dynamodb.TableEncryption.AWS_MANAGED,
+            time_to_live_attribute="ttl"  # Enable TTL for automatic cleanup
+        )
+
+        # Add GSI for querying conversations by user
+        self.conversation_table.add_global_secondary_index(
+            index_name="UserConversationIndex",
+            partition_key=dynamodb.Attribute(
+                name="user_id",
+                type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="updated_at",
+                type=dynamodb.AttributeType.STRING
+            )
+        )
+
         # Output table names
         CfnOutput(self, "ContentMetadataTableName", value=self.content_metadata_table.table_name)
         CfnOutput(self, "UserProgressTableName", value=self.user_progress_table.table_name)
+        CfnOutput(self, "ConversationTableName", value=self.conversation_table.table_name)
         
         # 5. OPENSEARCH SERVERLESS SETUP
         collection_name = "procert-vector-collection"
@@ -307,17 +335,18 @@ class ProcertInfrastructureStack(Stack):
         
         chatbot_lambda = lambda_.Function(self, "ProcertChatbotLambda",
             architecture=lambda_.Architecture.X86_64,
-            description="Handles user queries for the ProCert RAG system.",
+            description="Handles user queries for the ProCert RAG system with dual-mode responses.",
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="main.handler",
             code=chatbot_lambda_code,
-            timeout=Duration.seconds(30),
-            memory_size=512,
+            timeout=Duration.seconds(60),  # Increased timeout for enhanced mode
+            memory_size=1024,  # Increased memory for conversation management
             environment={
                 "OPENSEARCH_ENDPOINT": self.vector_collection.attr_collection_endpoint,
                 "OPENSEARCH_INDEX": collection_name,
                 "CONTENT_METADATA_TABLE": self.content_metadata_table.table_name,
-                "USER_PROGRESS_TABLE": self.user_progress_table.table_name
+                "USER_PROGRESS_TABLE": self.user_progress_table.table_name,
+                "CONVERSATION_TABLE": self.conversation_table.table_name
             }
         )
 
@@ -338,6 +367,7 @@ class ProcertInfrastructureStack(Stack):
         # Grant DynamoDB permissions to chatbot lambda
         self.content_metadata_table.grant_read_write_data(chatbot_lambda)
         self.user_progress_table.grant_read_write_data(chatbot_lambda)
+        self.conversation_table.grant_read_write_data(chatbot_lambda)
 
         # Grant read access to all S3 buckets for chatbot lambda (for content retrieval)
         for bucket in self.all_materials_buckets:
@@ -346,11 +376,32 @@ class ProcertInfrastructureStack(Stack):
         # 11. API GATEWAY
         api = apigateway.RestApi(self, "ProcertApi",
             rest_api_name="ProCert Service",
-            description="This service handles ProCert queries."
+            description="This service handles ProCert queries and conversations.",
+            default_cors_preflight_options=apigateway.CorsOptions(
+                allow_origins=apigateway.Cors.ALL_ORIGINS,
+                allow_methods=apigateway.Cors.ALL_METHODS,
+                allow_headers=["Content-Type", "X-Amz-Date", "Authorization", "X-Api-Key"]
+            )
         )
 
-        query_integration = apigateway.LambdaIntegration(chatbot_lambda)
+        # Chat endpoints
+        chat_integration = apigateway.LambdaIntegration(chatbot_lambda)
+        chat_resource = api.root.add_resource("chat")
+        
+        # POST /chat/message - Send message
+        message_resource = chat_resource.add_resource("message")
+        message_resource.add_method("POST", chat_integration)
+        
+        # GET /chat/conversation/{id} - Get conversation
+        conversation_resource = chat_resource.add_resource("conversation")
+        conversation_id_resource = conversation_resource.add_resource("{id}")
+        conversation_id_resource.add_method("GET", chat_integration)
+        
+        # DELETE /chat/conversation/{id} - Delete conversation
+        conversation_id_resource.add_method("DELETE", chat_integration)
+
+        # Maintain backward compatibility
         query_resource = api.root.add_resource("query")
-        query_resource.add_method("POST", query_integration)
+        query_resource.add_method("POST", chat_integration)
 
         CfnOutput(self, "ApiEndpoint", value=api.url)
