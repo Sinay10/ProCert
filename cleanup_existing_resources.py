@@ -88,7 +88,7 @@ def cleanup_cognito_user_pools():
         print(f"❌ Error listing User Pools: {str(e)}")
 
 def cleanup_opensearch_collections():
-    """Delete OpenSearch Serverless collections"""
+    """Delete OpenSearch Serverless collections and security policies"""
     print("\n🔍 Cleaning up OpenSearch collections...")
     
     try:
@@ -104,6 +104,44 @@ def cleanup_opensearch_collections():
                 print(f"❌ Error deleting collection {collection['name']}: {str(e)}")
     except Exception as e:
         print(f"❌ Error with OpenSearch cleanup: {str(e)}")
+    
+    # Clean up OpenSearch security policies
+    print("🔒 Cleaning up OpenSearch security policies...")
+    try:
+        opensearch = boto3.client('opensearchserverless')
+        
+        # Delete access policies
+        try:
+            access_policies = opensearch.list_access_policies(type='data')
+            for policy in access_policies.get('accessPolicySummaries', []):
+                if 'procert' in policy['name'].lower():
+                    opensearch.delete_access_policy(type='data', name=policy['name'])
+                    print(f"✅ Deleted access policy: {policy['name']}")
+        except Exception as e:
+            print(f"⚠️ Error cleaning access policies: {e}")
+        
+        # Delete encryption policies
+        try:
+            encryption_policies = opensearch.list_security_policies(type='encryption')
+            for policy in encryption_policies.get('securityPolicySummaries', []):
+                if 'procert' in policy['name'].lower():
+                    opensearch.delete_security_policy(type='encryption', name=policy['name'])
+                    print(f"✅ Deleted encryption policy: {policy['name']}")
+        except Exception as e:
+            print(f"⚠️ Error cleaning encryption policies: {e}")
+        
+        # Delete network policies
+        try:
+            network_policies = opensearch.list_security_policies(type='network')
+            for policy in network_policies.get('securityPolicySummaries', []):
+                if 'procert' in policy['name'].lower():
+                    opensearch.delete_security_policy(type='network', name=policy['name'])
+                    print(f"✅ Deleted network policy: {policy['name']}")
+        except Exception as e:
+            print(f"⚠️ Error cleaning network policies: {e}")
+                
+    except Exception as e:
+        print(f"⚠️ Error cleaning up OpenSearch security policies: {e}")
 
 def main():
     print("🧹 ProCert Resource Cleanup")

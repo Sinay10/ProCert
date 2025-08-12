@@ -708,7 +708,7 @@ def validate_certification_code(code: str) -> bool:
 
 
 # Validation helper functions
-def validate_model(model: Union[ContentMetadata, QuestionAnswer, UserProgress, VectorDocument]) -> bool:
+def validate_model(model: Union[ContentMetadata, QuestionAnswer, UserProgress, VectorDocument, 'UserProfile', 'QuizSession', 'StudyRecommendation']) -> bool:
     """
     Validate any model instance.
     
@@ -727,7 +727,404 @@ def validate_model(model: Union[ContentMetadata, QuestionAnswer, UserProgress, V
     return True
 
 
-def validate_models(models: List[Union[ContentMetadata, QuestionAnswer, UserProgress, VectorDocument]]) -> bool:
+@dataclass
+class StudyPreferences:
+    """
+    Model for user study preferences.
+    """
+    daily_goal_minutes: int = 30
+    preferred_difficulty: str = "intermediate"
+    notification_settings: Dict[str, bool] = field(default_factory=lambda: {
+        "email_reminders": True,
+        "achievement_notifications": True,
+        "study_recommendations": True
+    })
+    preferred_study_time: str = "evening"  # morning, afternoon, evening
+    quiz_length_preference: int = 10  # default number of questions
+
+    def validate(self) -> List[str]:
+        """Validate study preferences."""
+        errors = []
+        
+        if self.daily_goal_minutes < 0 or self.daily_goal_minutes > 480:  # max 8 hours
+            errors.append("daily_goal_minutes must be between 0 and 480")
+        
+        if self.preferred_difficulty not in ["beginner", "intermediate", "advanced"]:
+            errors.append("preferred_difficulty must be 'beginner', 'intermediate', or 'advanced'")
+        
+        if self.preferred_study_time not in ["morning", "afternoon", "evening"]:
+            errors.append("preferred_study_time must be 'morning', 'afternoon', or 'evening'")
+        
+        if self.quiz_length_preference < 5 or self.quiz_length_preference > 50:
+            errors.append("quiz_length_preference must be between 5 and 50")
+        
+        return errors
+
+    def is_valid(self) -> bool:
+        """Check if study preferences are valid."""
+        return len(self.validate()) == 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            'daily_goal_minutes': self.daily_goal_minutes,
+            'preferred_difficulty': self.preferred_difficulty,
+            'notification_settings': self.notification_settings,
+            'preferred_study_time': self.preferred_study_time,
+            'quiz_length_preference': self.quiz_length_preference
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'StudyPreferences':
+        """Create instance from dictionary."""
+        return cls(
+            daily_goal_minutes=data.get('daily_goal_minutes', 30),
+            preferred_difficulty=data.get('preferred_difficulty', 'intermediate'),
+            notification_settings=data.get('notification_settings', {
+                "email_reminders": True,
+                "achievement_notifications": True,
+                "study_recommendations": True
+            }),
+            preferred_study_time=data.get('preferred_study_time', 'evening'),
+            quiz_length_preference=data.get('quiz_length_preference', 10)
+        )
+
+
+@dataclass
+class UserProfile:
+    """
+    Model for user profile and account information.
+    """
+    user_id: str
+    email: str
+    name: str
+    target_certifications: List[str] = field(default_factory=list)
+    study_preferences: StudyPreferences = field(default_factory=StudyPreferences)
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    last_active: datetime = field(default_factory=datetime.utcnow)
+    is_active: bool = True
+    subscription_tier: str = "free"  # free, premium
+    total_study_time: int = 0  # total minutes studied
+    achievements: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def validate(self) -> List[str]:
+        """Validate user profile."""
+        errors = []
+        
+        if not self.user_id or not self.user_id.strip():
+            errors.append("user_id is required and cannot be empty")
+        
+        if not self.email or not self.email.strip():
+            errors.append("email is required and cannot be empty")
+        
+        # Basic email validation
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, self.email):
+            errors.append("email must be a valid email address")
+        
+        if not self.name or not self.name.strip():
+            errors.append("name is required and cannot be empty")
+        
+        # Validate target certifications
+        for cert in self.target_certifications:
+            if not validate_certification_code(cert):
+                errors.append(f"invalid certification code: {cert}")
+        
+        if self.subscription_tier not in ["free", "premium"]:
+            errors.append("subscription_tier must be 'free' or 'premium'")
+        
+        if self.total_study_time < 0:
+            errors.append("total_study_time cannot be negative")
+        
+        # Validate study preferences
+        pref_errors = self.study_preferences.validate()
+        if pref_errors:
+            errors.extend([f"study_preferences: {error}" for error in pref_errors])
+        
+        return errors
+
+    def is_valid(self) -> bool:
+        """Check if user profile is valid."""
+        return len(self.validate()) == 0
+
+    def add_certification_target(self, certification: str) -> bool:
+        """Add a certification to target list if valid."""
+        if validate_certification_code(certification) and certification not in self.target_certifications:
+            self.target_certifications.append(certification.upper())
+            return True
+        return False
+
+    def remove_certification_target(self, certification: str) -> bool:
+        """Remove a certification from target list."""
+        if certification.upper() in self.target_certifications:
+            self.target_certifications.remove(certification.upper())
+            return True
+        return False
+
+    def add_achievement(self, achievement: str) -> None:
+        """Add an achievement if not already present."""
+        if achievement not in self.achievements:
+            self.achievements.append(achievement)
+
+    def update_last_active(self) -> None:
+        """Update the last active timestamp."""
+        self.last_active = datetime.utcnow()
+
+    def add_study_time(self, minutes: int) -> None:
+        """Add study time to total."""
+        if minutes > 0:
+            self.total_study_time += minutes
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            'user_id': self.user_id,
+            'email': self.email,
+            'name': self.name,
+            'target_certifications': self.target_certifications,
+            'study_preferences': self.study_preferences.to_dict(),
+            'created_at': self.created_at.isoformat(),
+            'last_active': self.last_active.isoformat(),
+            'is_active': self.is_active,
+            'subscription_tier': self.subscription_tier,
+            'total_study_time': self.total_study_time,
+            'achievements': self.achievements,
+            'metadata': self.metadata
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'UserProfile':
+        """Create instance from dictionary."""
+        study_prefs_data = data.get('study_preferences', {})
+        study_preferences = StudyPreferences.from_dict(study_prefs_data)
+        
+        return cls(
+            user_id=data['user_id'],
+            email=data['email'],
+            name=data['name'],
+            target_certifications=data.get('target_certifications', []),
+            study_preferences=study_preferences,
+            created_at=datetime.fromisoformat(data.get('created_at', datetime.utcnow().isoformat())),
+            last_active=datetime.fromisoformat(data.get('last_active', datetime.utcnow().isoformat())),
+            is_active=data.get('is_active', True),
+            subscription_tier=data.get('subscription_tier', 'free'),
+            total_study_time=data.get('total_study_time', 0),
+            achievements=data.get('achievements', []),
+            metadata=data.get('metadata', {})
+        )
+
+
+@dataclass
+class QuizSession:
+    """
+    Model for quiz sessions and results.
+    """
+    quiz_id: str
+    user_id: str
+    certification: str
+    questions: List[Dict[str, Any]] = field(default_factory=list)
+    status: str = "in_progress"  # in_progress, completed, abandoned
+    score: Optional[float] = None
+    total_questions: int = 0
+    correct_answers: int = 0
+    started_at: datetime = field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None
+    time_spent: int = 0  # seconds
+    difficulty_level: str = "intermediate"
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def validate(self) -> List[str]:
+        """Validate quiz session."""
+        errors = []
+        
+        if not self.quiz_id or not self.quiz_id.strip():
+            errors.append("quiz_id is required and cannot be empty")
+        
+        if not self.user_id or not self.user_id.strip():
+            errors.append("user_id is required and cannot be empty")
+        
+        if not validate_certification_code(self.certification):
+            errors.append(f"invalid certification code: {self.certification}")
+        
+        if self.status not in ["in_progress", "completed", "abandoned"]:
+            errors.append("status must be 'in_progress', 'completed', or 'abandoned'")
+        
+        if self.score is not None and (self.score < 0 or self.score > 100):
+            errors.append("score must be between 0 and 100")
+        
+        if self.total_questions < 0:
+            errors.append("total_questions cannot be negative")
+        
+        if self.correct_answers < 0 or self.correct_answers > self.total_questions:
+            errors.append("correct_answers must be between 0 and total_questions")
+        
+        if self.time_spent < 0:
+            errors.append("time_spent cannot be negative")
+        
+        if self.difficulty_level not in ["beginner", "intermediate", "advanced"]:
+            errors.append("difficulty_level must be 'beginner', 'intermediate', or 'advanced'")
+        
+        return errors
+
+    def is_valid(self) -> bool:
+        """Check if quiz session is valid."""
+        return len(self.validate()) == 0
+
+    def complete_quiz(self) -> None:
+        """Mark quiz as completed and calculate score."""
+        self.status = "completed"
+        self.completed_at = datetime.utcnow()
+        if self.total_questions > 0:
+            self.score = (self.correct_answers / self.total_questions) * 100
+
+    def abandon_quiz(self) -> None:
+        """Mark quiz as abandoned."""
+        self.status = "abandoned"
+        self.completed_at = datetime.utcnow()
+
+    def add_question_result(self, question_data: Dict[str, Any], is_correct: bool) -> None:
+        """Add a question result to the session."""
+        self.questions.append(question_data)
+        self.total_questions += 1
+        if is_correct:
+            self.correct_answers += 1
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            'quiz_id': self.quiz_id,
+            'user_id': self.user_id,
+            'certification': self.certification,
+            'questions': self.questions,
+            'status': self.status,
+            'score': self.score,
+            'total_questions': self.total_questions,
+            'correct_answers': self.correct_answers,
+            'started_at': self.started_at.isoformat(),
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'time_spent': self.time_spent,
+            'difficulty_level': self.difficulty_level,
+            'metadata': self.metadata
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'QuizSession':
+        """Create instance from dictionary."""
+        completed_at = None
+        if data.get('completed_at'):
+            completed_at = datetime.fromisoformat(data['completed_at'])
+        
+        return cls(
+            quiz_id=data['quiz_id'],
+            user_id=data['user_id'],
+            certification=data['certification'],
+            questions=data.get('questions', []),
+            status=data.get('status', 'in_progress'),
+            score=data.get('score'),
+            total_questions=data.get('total_questions', 0),
+            correct_answers=data.get('correct_answers', 0),
+            started_at=datetime.fromisoformat(data['started_at']),
+            completed_at=completed_at,
+            time_spent=data.get('time_spent', 0),
+            difficulty_level=data.get('difficulty_level', 'intermediate'),
+            metadata=data.get('metadata', {})
+        )
+
+
+@dataclass
+class StudyRecommendation:
+    """
+    Model for study recommendations.
+    """
+    recommendation_id: str
+    user_id: str
+    type: str  # content, quiz, review
+    priority: int = 1  # 1-5, higher is more important
+    content_id: Optional[str] = None
+    certification: Optional[str] = None
+    title: str = ""
+    description: str = ""
+    reasoning: str = ""
+    estimated_time: int = 0  # minutes
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    expires_at: int = field(default_factory=lambda: int((datetime.utcnow().timestamp() + 86400 * 7)))  # 7 days TTL
+    is_completed: bool = False
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def validate(self) -> List[str]:
+        """Validate study recommendation."""
+        errors = []
+        
+        if not self.recommendation_id or not self.recommendation_id.strip():
+            errors.append("recommendation_id is required and cannot be empty")
+        
+        if not self.user_id or not self.user_id.strip():
+            errors.append("user_id is required and cannot be empty")
+        
+        if self.type not in ["content", "quiz", "review"]:
+            errors.append("type must be 'content', 'quiz', or 'review'")
+        
+        if self.priority < 1 or self.priority > 5:
+            errors.append("priority must be between 1 and 5")
+        
+        if self.certification and not validate_certification_code(self.certification):
+            errors.append(f"invalid certification code: {self.certification}")
+        
+        if self.estimated_time < 0:
+            errors.append("estimated_time cannot be negative")
+        
+        return errors
+
+    def is_valid(self) -> bool:
+        """Check if study recommendation is valid."""
+        return len(self.validate()) == 0
+
+    def mark_completed(self) -> None:
+        """Mark recommendation as completed."""
+        self.is_completed = True
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            'recommendation_id': self.recommendation_id,
+            'user_id': self.user_id,
+            'type': self.type,
+            'priority': self.priority,
+            'content_id': self.content_id,
+            'certification': self.certification,
+            'title': self.title,
+            'description': self.description,
+            'reasoning': self.reasoning,
+            'estimated_time': self.estimated_time,
+            'created_at': self.created_at.isoformat(),
+            'expires_at': self.expires_at,
+            'is_completed': self.is_completed,
+            'metadata': self.metadata
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'StudyRecommendation':
+        """Create instance from dictionary."""
+        return cls(
+            recommendation_id=data['recommendation_id'],
+            user_id=data['user_id'],
+            type=data['type'],
+            priority=data.get('priority', 1),
+            content_id=data.get('content_id'),
+            certification=data.get('certification'),
+            title=data.get('title', ''),
+            description=data.get('description', ''),
+            reasoning=data.get('reasoning', ''),
+            estimated_time=data.get('estimated_time', 0),
+            created_at=datetime.fromisoformat(data['created_at']),
+            expires_at=data.get('expires_at', int((datetime.utcnow().timestamp() + 86400 * 7))),
+            is_completed=data.get('is_completed', False),
+            metadata=data.get('metadata', {})
+        )
+
+
+def validate_models(models: List[Union[ContentMetadata, QuestionAnswer, UserProgress, VectorDocument, 'UserProfile', 'QuizSession', 'StudyRecommendation']]) -> bool:
     """
     Validate a list of model instances.
     

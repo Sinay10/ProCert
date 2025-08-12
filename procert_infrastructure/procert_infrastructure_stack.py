@@ -7,6 +7,7 @@ from aws_cdk import (
     aws_lambda as lambda_, aws_iam as iam,
     aws_apigateway as apigateway,
     aws_dynamodb as dynamodb,
+    aws_cognito as cognito,
     custom_resources as cr
 )
 from aws_cdk.aws_logs import RetentionDays
@@ -125,7 +126,9 @@ class ProcertInfrastructureStack(Stack):
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.RETAIN,
-            point_in_time_recovery=True,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(
+                point_in_time_recovery_enabled=True
+            ),
             encryption=dynamodb.TableEncryption.AWS_MANAGED
         )
 
@@ -168,7 +171,9 @@ class ProcertInfrastructureStack(Stack):
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.RETAIN,
-            point_in_time_recovery=True,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(
+                point_in_time_recovery_enabled=True
+            ),
             encryption=dynamodb.TableEncryption.AWS_MANAGED
         )
 
@@ -207,7 +212,9 @@ class ProcertInfrastructureStack(Stack):
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.RETAIN,
-            point_in_time_recovery=True,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(
+                point_in_time_recovery_enabled=True
+            ),
             encryption=dynamodb.TableEncryption.AWS_MANAGED,
             time_to_live_attribute="ttl"  # Enable TTL for automatic cleanup
         )
@@ -225,10 +232,183 @@ class ProcertInfrastructureStack(Stack):
             )
         )
 
+        # User profiles table for authentication and profile management
+        self.user_profiles_table = dynamodb.Table(self, "UserProfilesTable",
+            table_name=f"procert-user-profiles-{self.account}",
+            partition_key=dynamodb.Attribute(
+                name="user_id",
+                type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.RETAIN,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(
+                point_in_time_recovery_enabled=True
+            ),
+            encryption=dynamodb.TableEncryption.AWS_MANAGED
+        )
+
+        # Add GSI for querying by email
+        self.user_profiles_table.add_global_secondary_index(
+            index_name="EmailIndex",
+            partition_key=dynamodb.Attribute(
+                name="email",
+                type=dynamodb.AttributeType.STRING
+            )
+        )
+
+        # Quiz sessions table for quiz management
+        self.quiz_sessions_table = dynamodb.Table(self, "QuizSessionsTable",
+            table_name=f"procert-quiz-sessions-{self.account}",
+            partition_key=dynamodb.Attribute(
+                name="quiz_id",
+                type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.RETAIN,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(
+                point_in_time_recovery_enabled=True
+            ),
+            encryption=dynamodb.TableEncryption.AWS_MANAGED
+        )
+
+        # Add GSI for querying user's quiz sessions
+        self.quiz_sessions_table.add_global_secondary_index(
+            index_name="UserQuizIndex",
+            partition_key=dynamodb.Attribute(
+                name="user_id",
+                type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="started_at",
+                type=dynamodb.AttributeType.STRING
+            )
+        )
+
+        # Study recommendations table
+        self.recommendations_table = dynamodb.Table(self, "RecommendationsTable",
+            table_name=f"procert-recommendations-{self.account}",
+            partition_key=dynamodb.Attribute(
+                name="user_id",
+                type=dynamodb.AttributeType.STRING
+            ),
+            sort_key=dynamodb.Attribute(
+                name="recommendation_id",
+                type=dynamodb.AttributeType.STRING
+            ),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.RETAIN,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(
+                point_in_time_recovery_enabled=True
+            ),
+            encryption=dynamodb.TableEncryption.AWS_MANAGED,
+            time_to_live_attribute="expires_at"  # Enable TTL for automatic cleanup
+        )
+
         # Output table names
         CfnOutput(self, "ContentMetadataTableName", value=self.content_metadata_table.table_name)
         CfnOutput(self, "UserProgressTableName", value=self.user_progress_table.table_name)
         CfnOutput(self, "ConversationTableName", value=self.conversation_table.table_name)
+        CfnOutput(self, "UserProfilesTableName", value=self.user_profiles_table.table_name)
+        CfnOutput(self, "QuizSessionsTableName", value=self.quiz_sessions_table.table_name)
+        CfnOutput(self, "RecommendationsTableName", value=self.recommendations_table.table_name)
+        
+        # 4. COGNITO USER POOL AND IDENTITY POOL
+        # User Pool for authentication
+        self.user_pool = cognito.UserPool(self, "ProcertUserPool",
+            user_pool_name=f"procert-users-{self.account}",
+            self_sign_up_enabled=True,
+            sign_in_aliases=cognito.SignInAliases(email=True),
+            auto_verify=cognito.AutoVerifiedAttrs(email=True),
+            password_policy=cognito.PasswordPolicy(
+                min_length=8,
+                require_lowercase=True,
+                require_uppercase=True,
+                require_digits=True,
+                require_symbols=False
+            ),
+            account_recovery=cognito.AccountRecovery.EMAIL_ONLY,
+            removal_policy=RemovalPolicy.RETAIN,
+            standard_attributes=cognito.StandardAttributes(
+                email=cognito.StandardAttribute(required=True, mutable=True),
+                given_name=cognito.StandardAttribute(required=True, mutable=True),
+                family_name=cognito.StandardAttribute(required=True, mutable=True)
+            ),
+            custom_attributes={
+                "target_certs": cognito.StringAttribute(mutable=True),
+                "study_prefs": cognito.StringAttribute(mutable=True)
+            }
+        )
+
+        # User Pool Client for web application
+        self.user_pool_client = cognito.UserPoolClient(self, "ProcertUserPoolClient",
+            user_pool=self.user_pool,
+            user_pool_client_name=f"procert-web-client-{self.account}",
+            auth_flows=cognito.AuthFlow(
+                user_password=True,
+                user_srp=True,
+                admin_user_password=True
+            ),
+            generate_secret=False,  # For web clients, no secret needed
+            prevent_user_existence_errors=True,
+            access_token_validity=Duration.hours(1),
+            id_token_validity=Duration.hours(1),
+            refresh_token_validity=Duration.days(30)
+        )
+
+        # Identity Pool for AWS resource access
+        self.identity_pool = cognito.CfnIdentityPool(self, "ProcertIdentityPool",
+            identity_pool_name=f"procert_identity_pool_{self.account}",
+            allow_unauthenticated_identities=False,
+            cognito_identity_providers=[
+                cognito.CfnIdentityPool.CognitoIdentityProviderProperty(
+                    client_id=self.user_pool_client.user_pool_client_id,
+                    provider_name=self.user_pool.user_pool_provider_name
+                )
+            ]
+        )
+
+        # IAM roles for authenticated users
+        authenticated_role = iam.Role(self, "CognitoAuthenticatedRole",
+            assumed_by=iam.FederatedPrincipal(
+                "cognito-identity.amazonaws.com",
+                conditions={
+                    "StringEquals": {
+                        "cognito-identity.amazonaws.com:aud": self.identity_pool.ref
+                    },
+                    "ForAnyValue:StringLike": {
+                        "cognito-identity.amazonaws.com:amr": "authenticated"
+                    }
+                },
+                assume_role_action="sts:AssumeRoleWithWebIdentity"
+            ),
+            inline_policies={
+                "CognitoAuthenticatedPolicy": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            effect=iam.Effect.ALLOW,
+                            actions=[
+                                "cognito-sync:*",
+                                "cognito-identity:*"
+                            ],
+                            resources=["*"]
+                        )
+                    ]
+                )
+            }
+        )
+
+        # Attach the roles to the identity pool
+        cognito.CfnIdentityPoolRoleAttachment(self, "IdentityPoolRoleAttachment",
+            identity_pool_id=self.identity_pool.ref,
+            roles={
+                "authenticated": authenticated_role.role_arn
+            }
+        )
+
+        # Output Cognito details
+        CfnOutput(self, "UserPoolId", value=self.user_pool.user_pool_id)
+        CfnOutput(self, "UserPoolClientId", value=self.user_pool_client.user_pool_client_id)
+        CfnOutput(self, "IdentityPoolId", value=self.identity_pool.ref)
         
         # 5. OPENSEARCH SERVERLESS SETUP
         collection_name = "procert-vector-collection"
@@ -339,7 +519,7 @@ class ProcertInfrastructureStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="main.handler",
             code=chatbot_lambda_code,
-            timeout=Duration.seconds(60),  # Increased timeout for enhanced mode
+            timeout=Duration.seconds(25),  # Reduced to stay under API Gateway 30s limit
             memory_size=1024,  # Increased memory for conversation management
             environment={
                 "OPENSEARCH_ENDPOINT": self.vector_collection.attr_collection_endpoint,
@@ -373,6 +553,86 @@ class ProcertInfrastructureStack(Stack):
         for bucket in self.all_materials_buckets:
             bucket.grant_read(chatbot_lambda)
 
+        # 10.5. USER PROFILE MANAGEMENT LAMBDA
+        # User profile lambda with conditional bundling
+        if skip_bundling:
+            user_profile_lambda_code = lambda_.Code.from_asset("user_profile_lambda_src")
+        else:
+            user_profile_lambda_code = lambda_.Code.from_asset("user_profile_lambda_src",
+                bundling=BundlingOptions(
+                    image=lambda_.Runtime.PYTHON_3_11.bundling_image,
+                    entrypoint=["/bin/bash", "-c"],
+                    command=[
+                        "pip install --platform manylinux2014_x86_64 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output"
+                    ]
+                )
+            )
+        
+        user_profile_lambda = lambda_.Function(self, "ProcertUserProfileLambda",
+            architecture=lambda_.Architecture.X86_64,
+            description="Handles user authentication and profile management for the ProCert Learning Platform.",
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="main.lambda_handler",
+            code=user_profile_lambda_code,
+            timeout=Duration.seconds(30),
+            memory_size=512,
+            environment={
+                "USER_PROFILES_TABLE": self.user_profiles_table.table_name,
+                "USER_POOL_ID": self.user_pool.user_pool_id,
+                "USER_POOL_CLIENT_ID": self.user_pool_client.user_pool_client_id,
+                "QUIZ_SESSIONS_TABLE": self.quiz_sessions_table.table_name,
+                "RECOMMENDATIONS_TABLE": self.recommendations_table.table_name
+            }
+        )
+
+        # Grant DynamoDB permissions to user profile lambda
+        self.user_profiles_table.grant_read_write_data(user_profile_lambda)
+        self.quiz_sessions_table.grant_read_write_data(user_profile_lambda)
+        self.recommendations_table.grant_read_write_data(user_profile_lambda)
+
+        # Grant Cognito permissions to user profile lambda
+        user_profile_lambda.add_to_role_policy(iam.PolicyStatement(
+            actions=[
+                "cognito-idp:AdminCreateUser",
+                "cognito-idp:AdminSetUserPassword",
+                "cognito-idp:AdminInitiateAuth",
+                "cognito-idp:AdminDeleteUser",
+                "cognito-idp:GetUser",
+                "cognito-idp:ForgotPassword",
+                "cognito-idp:ConfirmForgotPassword"
+            ],
+            resources=[self.user_pool.user_pool_arn]
+        ))
+
+        # 10.6. JWT AUTHORIZER LAMBDA
+        # JWT authorizer lambda with conditional bundling
+        if skip_bundling:
+            jwt_authorizer_lambda_code = lambda_.Code.from_asset("jwt_authorizer_lambda_src")
+        else:
+            jwt_authorizer_lambda_code = lambda_.Code.from_asset("jwt_authorizer_lambda_src",
+                bundling=BundlingOptions(
+                    image=lambda_.Runtime.PYTHON_3_11.bundling_image,
+                    entrypoint=["/bin/bash", "-c"],
+                    command=[
+                        "pip install --platform manylinux2014_x86_64 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output"
+                    ]
+                )
+            )
+        
+        jwt_authorizer_lambda = lambda_.Function(self, "ProcertJWTAuthorizerLambda",
+            architecture=lambda_.Architecture.X86_64,
+            description="JWT token validation authorizer for the ProCert Learning Platform API.",
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="main.lambda_handler",
+            code=jwt_authorizer_lambda_code,
+            timeout=Duration.seconds(10),
+            memory_size=256,
+            environment={
+                "USER_POOL_ID": self.user_pool.user_pool_id,
+                "USER_POOL_CLIENT_ID": self.user_pool_client.user_pool_client_id
+            }
+        )
+
         # 11. API GATEWAY
         api = apigateway.RestApi(self, "ProcertApi",
             rest_api_name="ProCert Service",
@@ -384,21 +644,46 @@ class ProcertInfrastructureStack(Stack):
             )
         )
 
-        # Chat endpoints
+        # Create JWT authorizer
+        jwt_authorizer = apigateway.TokenAuthorizer(self, "JWTAuthorizer",
+            handler=jwt_authorizer_lambda,
+            identity_source="method.request.header.Authorization",
+            authorizer_name="ProcertJWTAuthorizer",
+            results_cache_ttl=Duration.minutes(5)
+        )
+
+        # Chat endpoints (protected)
         chat_integration = apigateway.LambdaIntegration(chatbot_lambda)
         chat_resource = api.root.add_resource("chat")
         
-        # POST /chat/message - Send message
+        # POST /chat/message - Send message (protected)
         message_resource = chat_resource.add_resource("message")
-        message_resource.add_method("POST", chat_integration)
+        message_resource.add_method("POST", chat_integration, authorizer=jwt_authorizer)
         
-        # GET /chat/conversation/{id} - Get conversation
+        # GET /chat/conversation/{id} - Get conversation (protected)
         conversation_resource = chat_resource.add_resource("conversation")
         conversation_id_resource = conversation_resource.add_resource("{id}")
-        conversation_id_resource.add_method("GET", chat_integration)
+        conversation_id_resource.add_method("GET", chat_integration, authorizer=jwt_authorizer)
         
-        # DELETE /chat/conversation/{id} - Delete conversation
-        conversation_id_resource.add_method("DELETE", chat_integration)
+        # DELETE /chat/conversation/{id} - Delete conversation (protected)
+        conversation_id_resource.add_method("DELETE", chat_integration, authorizer=jwt_authorizer)
+
+        # User authentication and profile endpoints
+        user_profile_integration = apigateway.LambdaIntegration(user_profile_lambda)
+        
+        # Authentication endpoints (public)
+        auth_resource = api.root.add_resource("auth")
+        auth_resource.add_resource("register").add_method("POST", user_profile_integration)
+        auth_resource.add_resource("login").add_method("POST", user_profile_integration)
+        auth_resource.add_resource("forgot-password").add_method("POST", user_profile_integration)
+        auth_resource.add_resource("confirm-forgot-password").add_method("POST", user_profile_integration)
+        
+        # Profile management endpoints (protected)
+        profile_resource = api.root.add_resource("profile")
+        profile_user_resource = profile_resource.add_resource("{user_id}")
+        profile_user_resource.add_method("GET", user_profile_integration, authorizer=jwt_authorizer)
+        profile_user_resource.add_method("PUT", user_profile_integration, authorizer=jwt_authorizer)
+        profile_user_resource.add_method("DELETE", user_profile_integration, authorizer=jwt_authorizer)
 
         # Maintain backward compatibility
         query_resource = api.root.add_resource("query")

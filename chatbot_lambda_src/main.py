@@ -4,9 +4,11 @@ import os
 import json
 import boto3
 import uuid
+import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Any
 from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
+from botocore.exceptions import ClientError
 
 # Initialize clients and get environment variables
 bedrock_runtime = boto3.client('bedrock-runtime')
@@ -32,15 +34,61 @@ opensearch_client = OpenSearch(
 # DynamoDB table
 conversation_table = dynamodb.Table(conversation_table_name)
 
-def get_embedding(text: str) -> List[float]:
-    """Generates an embedding for a text query."""
+def invoke_bedrock_with_retry(body: str, model_id: str, max_retries: int = 2) -> Optional[Dict]:
+    """
+    Invoke Bedrock with exponential backoff and reduced retries for faster fallback.
+    
+    Args:
+        body: JSON body for the request
+        model_id: Bedrock model ID
+        max_retries: Maximum number of retries (reduced from 4 to 2)
+    
+    Returns:
+        Response dict or None if all retries failed
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            response = bedrock_runtime.invoke_model(
+                body=body,
+                modelId=model_id,
+                accept="application/json",
+                contentType="application/json"
+            )
+            return json.loads(response.get("body").read())
+            
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', '')
+            
+            # If it's a throttling error and we have retries left
+            if error_code in ['ThrottlingException', 'TooManyRequestsException'] and attempt < max_retries:
+                # Exponential backoff: 1s, 2s, 4s...
+                wait_time = 2 ** attempt
+                print(f"Bedrock throttled, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
+                time.sleep(wait_time)
+                continue
+            else:
+                print(f"Bedrock error after {attempt + 1} attempts: {str(e)}")
+                return None
+                
+        except Exception as e:
+            print(f"Unexpected Bedrock error on attempt {attempt + 1}: {str(e)}")
+            if attempt < max_retries:
+                time.sleep(1)  # Short wait for unexpected errors
+                continue
+            return None
+    
+    return None
+
+def get_embedding(text: str) -> Optional[List[float]]:
+    """Generates an embedding for a text query with retry logic."""
     body = json.dumps({"inputText": text})
-    response = bedrock_runtime.invoke_model(
-        body=body, modelId="amazon.titan-embed-text-v1",
-        accept="application/json", contentType="application/json"
-    )
-    response_body = json.loads(response.get("body").read())
-    return response_body.get("embedding")
+    response_body = invoke_bedrock_with_retry(body, "amazon.titan-embed-text-v1", max_retries=2)
+    
+    if response_body:
+        return response_body.get("embedding")
+    else:
+        print("Failed to get embedding after retries, returning None")
+        return None
 
 def search_opensearch(query_embedding: List[float], certification_type: Optional[str] = None, 
                      size: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
@@ -126,18 +174,15 @@ Answer based only on the study materials:"""
         "messages": [{"role": "user", "content": prompt}]
     })
     
-    try:
-        response = bedrock_runtime.invoke_model(
-            body=body, modelId="anthropic.claude-3-5-sonnet-20240620-v1:0",
-            accept="application/json", contentType="application/json"
-        )
-        
-        response_body = json.loads(response.get("body").read())
+    # Use retry logic with faster fallback
+    response_body = invoke_bedrock_with_retry(body, "anthropic.claude-3-5-sonnet-20240620-v1:0", max_retries=2)
+    
+    if response_body:
         answer = response_body.get("content")[0].get("text")
         return answer
-    except Exception as e:
-        print(f"Error generating RAG answer: {e}")
-        return "I encountered an error processing your question. Please try again."
+    else:
+        print("RAG answer generation failed after retries, suggesting enhanced mode")
+        return "I encountered rate limiting issues. Would you like me to use enhanced mode for broader AWS knowledge?"
 
 
 def generate_enhanced_answer(question: str, context: str, conversation_history: List[Dict] = None) -> str:
@@ -174,18 +219,15 @@ Provide a comprehensive answer using both study materials (if available) and you
         "messages": [{"role": "user", "content": prompt}]
     })
     
-    try:
-        response = bedrock_runtime.invoke_model(
-            body=body, modelId="anthropic.claude-3-5-sonnet-20240620-v1:0",
-            accept="application/json", contentType="application/json"
-        )
-        
-        response_body = json.loads(response.get("body").read())
+    # Use retry logic with faster fallback
+    response_body = invoke_bedrock_with_retry(body, "anthropic.claude-3-5-sonnet-20240620-v1:0", max_retries=2)
+    
+    if response_body:
         answer = response_body.get("content")[0].get("text")
         return answer
-    except Exception as e:
-        print(f"Error generating enhanced answer: {e}")
-        return "I encountered an error processing your question. Please try again."
+    else:
+        print("Enhanced answer generation failed after retries")
+        return "I'm experiencing rate limiting issues with the AI service. Please try again in a few moments, or try a simpler question."
 
 
 def determine_response_mode(question: str, context: str, context_parts: List[Dict], 
@@ -320,7 +362,10 @@ def handle_chat_message(event: Dict) -> Dict:
         certification = body.get("certification")
         requested_mode = body.get("mode")  # 'rag' or 'enhanced'
         conversation_id = body.get("conversation_id")
-        user_id = body.get("user_id", "anonymous")
+        
+        # Get user_id from authorizer context (JWT token)
+        authorizer_context = event.get("requestContext", {}).get("authorizer", {})
+        user_id = authorizer_context.get("user_id", body.get("user_id", "anonymous"))
         
         if not message:
             return {
@@ -343,16 +388,27 @@ def handle_chat_message(event: Dict) -> Dict:
         
         # 1. Retrieve: Get embedding and search for context
         query_embedding = get_embedding(message)
-        context, context_parts = search_opensearch(query_embedding, certification)
         
-        # 2. Determine response mode
-        mode_used = determine_response_mode(message, context, context_parts, requested_mode)
+        # If embedding generation failed due to rate limits, skip to enhanced mode
+        if query_embedding is None:
+            print("Embedding generation failed, switching to enhanced mode")
+            context, context_parts = "", []
+            mode_used = "enhanced"
+        else:
+            context, context_parts = search_opensearch(query_embedding, certification)
+            # 2. Determine response mode
+            mode_used = determine_response_mode(message, context, context_parts, requested_mode)
         
-        # 3. Generate response based on mode
+        # 3. Generate response based on mode with smart fallback
         if mode_used == "enhanced":
             response = generate_enhanced_answer(message, context, conversation_history)
         else:
             response = generate_rag_answer(message, context, conversation_history)
+            
+        # 4. Smart fallback: if RAG failed and returned error message, try enhanced mode
+        if "rate limiting issues" in response or "encountered an error" in response:
+            print("RAG mode failed, falling back to enhanced mode")
+            response = generate_enhanced_answer(message, context, conversation_history)
         
         # 4. Prepare source information
         sources = []

@@ -1,0 +1,29 @@
+{
+  "ProcertInfrastructureStack": {
+    "MaterialsBucketSAPName": "procert-materials-sap-353207798766",
+    "MaterialsBucketDOPName": "procert-materials-dop-353207798766",
+    "UserProgressTableName": "procert-user-progress-353207798766",
+    "MaterialsBucketMLSName": "procert-materials-mls-353207798766",
+    "MaterialsBucketSAAName": "procert-materials-saa-353207798766",
+    "ApiEndpoint": "https://04l6uq5jl4.execute-api.us-east-1.amazonaws.com/prod/",
+    "UserProfilesTableName": "procert-user-profiles-353207798766",
+    "ConversationTableName": "procert-conversations-353207798766",
+    "OpenSearchCollectionEndpoint": "https://ik9o77ze3heg82r8yau7.us-east-1.aoss.amazonaws.com",
+    "MaterialsBucketCCPName": "procert-materials-ccp-353207798766",
+    "IdentityPoolId": "us-east-1:c1861298-b51b-48c3-b8b7-0984201923cc",
+    "MaterialsBucketSOAName": "procert-materials-soa-353207798766",
+    "MaterialsBucketDVAName": "procert-materials-dva-353207798766",
+    "QuizSessionsTableName": "procert-quiz-sessions-353207798766",
+    "ProcertApiEndpoint5C85A97A": "https://04l6uq5jl4.execute-api.us-east-1.amazonaws.com/prod/",
+    "MaterialsBucketANSName": "procert-materials-ans-353207798766",
+    "MaterialsBucketDEAName": "procert-materials-dea-353207798766",
+    "MaterialsBucketGeneralName": "procert-materials-general-353207798766",
+    "MaterialsBucketAIPName": "procert-materials-aip-353207798766",
+    "UserPoolClientId": "53kma8sulrhdl9ki7dboi0vj1j",
+    "MaterialsBucketSCSName": "procert-materials-scs-353207798766",
+    "UserPoolId": "us-east-1_PnLvP0o7M",
+    "MaterialsBucketMLAName": "procert-materials-mla-353207798766",
+    "RecommendationsTableName": "procert-recommendations-353207798766",
+    "ContentMetadataTableName": "procert-content-metadata-353207798766"
+  }
+}

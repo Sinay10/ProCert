@@ -1,12 +1,12 @@
 # GitLab CI/CD Pipeline for ProCert Infrastructure
-# This pipeline handles testing, building, and deploying the ProCert system
+# This pipeline handles testing, building, and validation (deployment disabled for safety)
 
 stages:
   - validate
   - test
   - security
   - build
-  - deploy
+  # - deploy  # DISABLED: Deploy stage commented out for safety
 
 variables:
   # Python version
@@ -36,11 +36,11 @@ lint-python:
   script:
     - pip install flake8 black isort
     - echo "Running Python linting..."
-    - flake8 shared/ lambda_src/ chatbot_lambda_src/ index_setup_lambda_src/ --max-line-length=120 || true
+    - flake8 shared/ lambda_src/ chatbot_lambda_src/ index_setup_lambda_src/ user_profile_lambda_src/ jwt_authorizer_lambda_src/ --max-line-length=120 || true
     - echo "Checking code formatting..."
-    - black --check shared/ lambda_src/ chatbot_lambda_src/ index_setup_lambda_src/ || true
+    - black --check shared/ lambda_src/ chatbot_lambda_src/ index_setup_lambda_src/ user_profile_lambda_src/ jwt_authorizer_lambda_src/ || true
     - echo "Checking import sorting..."
-    - isort --check-only shared/ lambda_src/ chatbot_lambda_src/ index_setup_lambda_src/ || true
+    - isort --check-only shared/ lambda_src/ chatbot_lambda_src/ index_setup_lambda_src/ user_profile_lambda_src/ jwt_authorizer_lambda_src/ || true
   allow_failure: true
   only:
     - merge_requests
@@ -154,7 +154,7 @@ security-scan:
     - pip install bandit safety || echo "Some security tools failed to install"
   script:
     - echo "Running security scan with bandit..."
-    - bandit -r shared/ lambda_src/ chatbot_lambda_src/ index_setup_lambda_src/ -f json -o bandit-report.json || true
+    - bandit -r shared/ lambda_src/ chatbot_lambda_src/ index_setup_lambda_src/ user_profile_lambda_src/ jwt_authorizer_lambda_src/ -f json -o bandit-report.json || true
     - echo "Checking for known security vulnerabilities..."
     - safety check --json --output safety-report.json || true
   artifacts:
@@ -187,6 +187,10 @@ build-lambdas:
     - cd chatbot_lambda_src && zip -r ../build/chatbot-lambda.zip . && cd ..
     # Build index setup lambda
     - cd index_setup_lambda_src && zip -r ../build/index-setup-lambda.zip . && cd ..
+    # Build user profile lambda
+    - cd user_profile_lambda_src && zip -r ../build/user-profile-lambda.zip . && cd ..
+    # Build JWT authorizer lambda
+    - cd jwt_authorizer_lambda_src && zip -r ../build/jwt-authorizer-lambda.zip . && cd ..
     - echo "Lambda packages built successfully"
   artifacts:
     paths:
@@ -197,42 +201,45 @@ build-lambdas:
     - develop
     - /^release\/.*$/
 
-# ==================== DEPLOYMENT STAGE ====================
+# ==================== DEPLOYMENT STAGE (DISABLED) ====================
 
-deploy:
-  stage: deploy
-  image: node:18-alpine
-  variables:
-    AWS_ACCOUNT_ID: $AWS_ACCOUNT_ID
-    # Skip Docker bundling in CI deployment
-    CI: "true"
-  before_script:
-    # Install Python, Node.js, and AWS CLI
-    - apk add --no-cache python3 py3-pip curl bash
-    - python3 -m venv .venv
-    - source .venv/bin/activate
-    - pip install -r requirements.txt
-    - pip install awscli
-    # Install CDK
-    - npm install -g aws-cdk@${CDK_VERSION}
-    # Configure AWS credentials
-    - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-    - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-    - aws configure set default.region $AWS_DEFAULT_REGION
-  script:
-    - echo "Deploying ProCert infrastructure (Docker bundling skipped in CI)..."
-    - source .venv/bin/activate
-    - cdk bootstrap aws://$AWS_ACCOUNT_ID/$AWS_DEFAULT_REGION
-    - echo "Attempting deployment..."
-    - cdk deploy --all --require-approval never || (echo "Deployment failed, attempting cleanup and retry..." && cdk destroy --all --force && sleep 30 && cdk deploy --all --require-approval never)
-    - echo "Deployment completed successfully"
-  environment:
-    name: development
-    url: https://procert-dev.example.com
-  only:
-    - main
-  when: manual
-  allow_failure: false
+# DEPLOYMENT DISABLED FOR SAFETY - Use manual deployment instead
+# To re-enable deployment, uncomment the section below and add 'deploy' back to stages
+
+# deploy:
+#   stage: deploy
+#   image: node:18-alpine
+#   variables:
+#     AWS_ACCOUNT_ID: $AWS_ACCOUNT_ID
+#     # Skip Docker bundling in CI deployment
+#     CI: "true"
+#   before_script:
+#     # Install Python, Node.js, and AWS CLI
+#     - apk add --no-cache python3 py3-pip curl bash
+#     - python3 -m venv .venv
+#     - source .venv/bin/activate
+#     - pip install -r requirements.txt
+#     - pip install awscli
+#     # Install CDK
+#     - npm install -g aws-cdk@${CDK_VERSION}
+#     # Configure AWS credentials
+#     - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+#     - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+#     - aws configure set default.region $AWS_DEFAULT_REGION
+#   script:
+#     - echo "Deploying ProCert infrastructure (Docker bundling skipped in CI)..."
+#     - source .venv/bin/activate
+#     - cdk bootstrap aws://$AWS_ACCOUNT_ID/$AWS_DEFAULT_REGION
+#     - echo "Attempting deployment..."
+#     - cdk deploy --all --require-approval never || (echo "Deployment failed, attempting cleanup and retry..." && cdk destroy --all --force && sleep 30 && cdk deploy --all --require-approval never)
+#     - echo "Deployment completed successfully"
+#   environment:
+#     name: development
+#     url: https://procert-dev.example.com
+#   only:
+#     - main
+#   when: manual
+#   allow_failure: false
 
 # ==================== CLEANUP ====================
 
@@ -244,3 +251,24 @@ cleanup:
     - rm -rf build/ || true
   when: always
   allow_failure: true
+
+# ==================== MANUAL DEPLOYMENT INSTRUCTIONS ====================
+# 
+# DEPLOYMENT IS DISABLED IN CI/CD FOR SAFETY
+# 
+# To deploy manually (recommended):
+# 1. Ensure your local environment is set up with AWS credentials
+# 2. Run: cdk deploy --all --require-approval never
+# 3. Monitor the deployment and handle any issues manually
+# 
+# To re-enable CI/CD deployment:
+# 1. Add 'deploy' back to the stages list at the top
+# 2. Uncomment the deploy job above
+# 3. Test thoroughly in a development environment first
+# 
+# This approach gives you:
+# - ✅ Version control and collaboration
+# - ✅ Code quality checks and testing
+# - ✅ Security scanning
+# - ✅ Build validation
+# - ❌ No risky automated deployment
