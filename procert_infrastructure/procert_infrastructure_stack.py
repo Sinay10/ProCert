@@ -604,6 +604,58 @@ class ProcertInfrastructureStack(Stack):
             resources=[self.user_pool.user_pool_arn]
         ))
 
+        # 10.5.5. QUIZ GENERATION SERVICE LAMBDA
+        # Quiz lambda with conditional bundling
+        if skip_bundling:
+            quiz_lambda_code = lambda_.Code.from_asset("quiz_lambda_src")
+        else:
+            quiz_lambda_code = lambda_.Code.from_asset("quiz_lambda_src",
+                bundling=BundlingOptions(
+                    image=lambda_.Runtime.PYTHON_3_11.bundling_image,
+                    entrypoint=["/bin/bash", "-c"],
+                    command=[
+                        "pip install --platform manylinux2014_x86_64 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output"
+                    ]
+                )
+            )
+        
+        quiz_lambda = lambda_.Function(self, "ProcertQuizLambda",
+            architecture=lambda_.Architecture.X86_64,
+            description="Handles quiz generation, session management, and scoring for the ProCert Learning Platform.",
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="main.lambda_handler",
+            code=quiz_lambda_code,
+            timeout=Duration.seconds(30),
+            memory_size=1024,
+            environment={
+                "QUIZ_SESSIONS_TABLE": self.quiz_sessions_table.table_name,
+                "USER_PROGRESS_TABLE": self.user_progress_table.table_name,
+                "CONTENT_METADATA_TABLE": self.content_metadata_table.table_name,
+                "OPENSEARCH_ENDPOINT": self.vector_collection.attr_collection_endpoint,
+                "OPENSEARCH_INDEX": collection_name
+            }
+        )
+
+        # Grant DynamoDB permissions to quiz lambda
+        self.quiz_sessions_table.grant_read_write_data(quiz_lambda)
+        self.user_progress_table.grant_read_write_data(quiz_lambda)
+        self.content_metadata_table.grant_read_data(quiz_lambda)
+
+        # Grant OpenSearch permissions to quiz lambda
+        quiz_lambda.add_to_role_policy(iam.PolicyStatement(
+            actions=["aoss:APIAccessAll"],
+            resources=[self.vector_collection.attr_arn]
+        ))
+
+        # Grant Bedrock permissions to quiz lambda (for potential AI-powered features)
+        quiz_lambda.add_to_role_policy(iam.PolicyStatement(
+            actions=["bedrock:InvokeModel"],
+            resources=[
+                f"arn:aws:bedrock:{self.region}::foundation-model/amazon.titan-embed-text-v1",
+                f"arn:aws:bedrock:{self.region}::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0"
+            ]
+        ))
+
         # 10.6. JWT AUTHORIZER LAMBDA
         # JWT authorizer lambda with conditional bundling
         if skip_bundling:
@@ -684,6 +736,27 @@ class ProcertInfrastructureStack(Stack):
         profile_user_resource.add_method("GET", user_profile_integration, authorizer=jwt_authorizer)
         profile_user_resource.add_method("PUT", user_profile_integration, authorizer=jwt_authorizer)
         profile_user_resource.add_method("DELETE", user_profile_integration, authorizer=jwt_authorizer)
+
+        # Quiz endpoints (protected)
+        quiz_integration = apigateway.LambdaIntegration(quiz_lambda)
+        quiz_resource = api.root.add_resource("quiz")
+        
+        # POST /quiz/generate - Generate new quiz (protected)
+        quiz_generate_resource = quiz_resource.add_resource("generate")
+        quiz_generate_resource.add_method("POST", quiz_integration, authorizer=jwt_authorizer)
+        
+        # POST /quiz/submit - Submit quiz answers (protected)
+        quiz_submit_resource = quiz_resource.add_resource("submit")
+        quiz_submit_resource.add_method("POST", quiz_integration, authorizer=jwt_authorizer)
+        
+        # GET /quiz/history/{user_id} - Get quiz history (protected)
+        quiz_history_resource = quiz_resource.add_resource("history")
+        quiz_history_user_resource = quiz_history_resource.add_resource("{user_id}")
+        quiz_history_user_resource.add_method("GET", quiz_integration, authorizer=jwt_authorizer)
+        
+        # GET /quiz/{quiz_id} - Get quiz details (protected)
+        quiz_id_resource = quiz_resource.add_resource("{quiz_id}")
+        quiz_id_resource.add_method("GET", quiz_integration, authorizer=jwt_authorizer)
 
         # Maintain backward compatibility
         query_resource = api.root.add_resource("query")

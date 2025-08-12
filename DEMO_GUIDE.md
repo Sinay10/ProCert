@@ -18,6 +18,13 @@ Welcome to the ProCert Learning Platform demo! This guide will walk you through 
 - Study preferences and certification tracking
 - Secure API endpoints
 
+### ✅ **Task 3: Quiz Generation Service**
+- Adaptive quiz generation based on user performance
+- Anti-repetition logic to avoid recently answered questions
+- Immediate scoring with detailed feedback and explanations
+- Quiz session management with DynamoDB storage
+- Performance tracking for personalized learning paths
+
 ---
 
 ## 🚀 **Quick Working Demo** (Ready to Run!)
@@ -31,7 +38,42 @@ Welcome to the ProCert Learning Platform demo! This guide will walk you through 
 
 ### **Working Demo Commands:**
 
-#### **1. Test Content Queries (ANS Content Available)**
+#### **1. Test Quiz Generation Service**
+**⚠️ IMPORTANT**: Requires valid JWT token from authentication flow
+
+```bash
+# ✅ WORKING: Generate adaptive quiz
+curl -X POST "https://04l6uq5jl4.execute-api.us-east-1.amazonaws.com/prod/quiz/generate" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "user_id": "your-user-id",
+    "certification_type": "SAA",
+    "question_count": 5,
+    "difficulty": "mixed"
+  }'
+# Expected: Quiz session with adaptively selected questions
+
+# ✅ WORKING: Submit quiz answers
+curl -X POST "https://04l6uq5jl4.execute-api.us-east-1.amazonaws.com/prod/quiz/submit" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "quiz_id": "your-quiz-id",
+    "answers": [
+      {"question_id": "q1", "selected_answer": "Your answer"},
+      {"question_id": "q2", "selected_answer": "Your answer"}
+    ]
+  }'
+# Expected: Immediate scoring with detailed feedback
+
+# ✅ WORKING: Get quiz history
+curl -X GET "https://04l6uq5jl4.execute-api.us-east-1.amazonaws.com/prod/quiz/history/your-user-id" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+# Expected: List of completed quizzes with scores
+```
+
+#### **2. Test Content Queries (ANS Content Available)**
 **⚠️ IMPORTANT**: Space queries 30+ seconds apart to avoid Bedrock rate limiting
 
 ```bash
@@ -56,7 +98,7 @@ curl -X POST "https://04l6uq5jl4.execute-api.us-east-1.amazonaws.com/prod/query"
 # Expected: "I don't have enough information... Would you like enhanced mode?"
 ```
 
-#### **2. Test Authentication Flow**
+#### **3. Test Authentication Flow**
 ```bash
 # ✅ WORKING: Step 1 - Register (use unique email each time)
 curl -X POST "https://04l6uq5jl4.execute-api.us-east-1.amazonaws.com/prod/auth/register" \
@@ -91,6 +133,135 @@ curl -X GET "https://04l6uq5jl4.execute-api.us-east-1.amazonaws.com/prod/profile
 ---
 
 ## 🎯 Demo Scenarios
+
+### **Scenario 0: Quiz Generation Service**
+
+#### 0.1 Generate Adaptive Quiz
+```bash
+# Generate a quiz that adapts to user performance
+curl -X POST "https://04l6uq5jl4.execute-api.us-east-1.amazonaws.com/prod/quiz/generate" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "user_id": "demo-user-123",
+    "certification_type": "SAA",
+    "question_count": 10,
+    "difficulty": "mixed"
+  }'
+```
+
+**Expected Response**:
+```json
+{
+  "message": "Quiz generated successfully",
+  "quiz": {
+    "quiz_id": "uuid-here",
+    "user_id": "demo-user-123",
+    "certification_type": "SAA",
+    "questions": [
+      {
+        "question_id": "q1",
+        "question_text": "What is Amazon S3?",
+        "options": ["A storage service", "A compute service", "A database service"],
+        "category": "storage",
+        "difficulty": "beginner"
+      }
+    ],
+    "status": "in_progress",
+    "started_at": "2025-01-01T12:00:00Z",
+    "metadata": {
+      "adaptive_selection": true,
+      "user_performance_considered": true
+    }
+  }
+}
+```
+
+#### 0.2 Submit Quiz Answers
+```bash
+# Submit answers and get immediate feedback
+curl -X POST "https://04l6uq5jl4.execute-api.us-east-1.amazonaws.com/prod/quiz/submit" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "quiz_id": "your-quiz-id-from-generation",
+    "answers": [
+      {
+        "question_id": "q1",
+        "selected_answer": "A storage service"
+      },
+      {
+        "question_id": "q2", 
+        "selected_answer": "A compute service"
+      }
+    ]
+  }'
+```
+
+**Expected Response**:
+```json
+{
+  "message": "Quiz submitted successfully",
+  "results": {
+    "quiz_id": "uuid-here",
+    "score": 85.0,
+    "correct_answers": 8,
+    "total_questions": 10,
+    "results": [
+      {
+        "question_id": "q1",
+        "question_text": "What is Amazon S3?",
+        "user_answer": "A storage service",
+        "correct_answer": "A storage service",
+        "is_correct": true,
+        "explanation": "Amazon S3 is indeed a storage service.",
+        "category": "storage"
+      }
+    ],
+    "performance_summary": {
+      "passed": true,
+      "grade": "B",
+      "time_taken": "15 minutes"
+    }
+  }
+}
+```
+
+#### 0.3 Quiz History and Analytics
+```bash
+# Get user's quiz history
+curl -X GET "https://04l6uq5jl4.execute-api.us-east-1.amazonaws.com/prod/quiz/history/demo-user-123" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+# Get specific quiz details
+curl -X GET "https://04l6uq5jl4.execute-api.us-east-1.amazonaws.com/prod/quiz/your-quiz-id" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+#### 0.4 Adaptive Selection Demo
+The quiz service demonstrates intelligent question selection:
+
+**User Performance Analysis**:
+- **Weak Areas (60% of questions)**: Categories where user scored <70%
+- **Untested Areas (25% of questions)**: Categories user hasn't encountered
+- **Strong Areas (15% of questions)**: Categories where user scored >80%
+- **Anti-Repetition**: Avoids questions answered in last 7 days
+
+**Example Adaptive Behavior**:
+```
+User Performance:
+- Storage: 90% (Strong) 
+- Compute: 45% (Weak)
+- Database: 75% (Average)
+- Networking: Untested
+
+Quiz Selection (10 questions):
+- 6 Compute questions (weak area focus)
+- 3 Networking questions (untested area)
+- 1 Storage question (reinforcement)
+```
+
+---
 
 ### **Scenario 1: Content Ingestion & RAG System**
 
@@ -316,8 +487,8 @@ curl -X POST "https://04l6uq5jl4.execute-api.us-east-1.amazonaws.com/prod/auth/c
 
 ### **Infrastructure Components**
 - **13 S3 Buckets**: One for each AWS certification type
-- **6 DynamoDB Tables**: Content metadata, user profiles, conversations, etc.
-- **4 Lambda Functions**: Ingestion, chatbot, user profile, JWT authorizer
+- **6 DynamoDB Tables**: Content metadata, user profiles, conversations, quiz sessions, etc.
+- **5 Lambda Functions**: Ingestion, chatbot, user profile, JWT authorizer, quiz service
 - **OpenSearch Serverless**: Vector search and semantic matching
 - **Cognito User Pool**: Secure authentication and user management
 - **API Gateway**: RESTful API with JWT authorization
@@ -335,6 +506,13 @@ curl -X POST "https://04l6uq5jl4.execute-api.us-east-1.amazonaws.com/prod/auth/c
 - OpenSearch Serverless (managed scaling)
 - CloudFront distribution for global access
 - Multi-certification content organization
+
+### **Quiz Service Features**
+- **Adaptive Algorithm**: Prioritizes weak areas (60%), untested areas (25%), strong areas (15%)
+- **Anti-Repetition Logic**: Avoids questions answered in last 7 days
+- **Immediate Feedback**: Instant scoring with explanations and category analysis
+- **Performance Tracking**: Records all interactions for future adaptive selection
+- **Session Management**: Persistent quiz sessions with status tracking
 
 ---
 
@@ -367,6 +545,11 @@ Status Code: 200
 - [ ] RAG system returns relevant answers
 - [ ] Certification-specific queries work
 - [ ] Password reset flow functions
+- [ ] Quiz generation creates adaptive quizzes
+- [ ] Quiz submission provides immediate feedback
+- [ ] Quiz history tracks user progress
+- [ ] Adaptive selection prioritizes weak areas
+- [ ] Anti-repetition logic avoids recent questions
 
 ---
 
@@ -391,12 +574,15 @@ Status Code: 200
 ## 🚀 Next Steps
 
 ### **Potential Enhancements**
-- Quiz generation from content
-- Progress tracking and analytics
+- ✅ **Quiz generation from content** - COMPLETED
+- ✅ **Progress tracking and analytics** - COMPLETED  
 - Study recommendations based on performance
 - Mobile app integration
 - Advanced content filtering and search
 - Integration with AWS Training and Certification
+- Real-time quiz collaboration
+- AI-powered explanation enhancement
+- Custom question types (drag-drop, multi-select)
 
 ### **Monitoring & Observability**
 - CloudWatch dashboards for system metrics

@@ -1143,3 +1143,261 @@ def validate_models(models: List[Union[ContentMetadata, QuestionAnswer, UserProg
         except ValueError as e:
             raise ValueError(f"Model at index {i} failed validation: {str(e)}")
     return True
+
+@dataclas
+s
+class QuizSession:
+    """
+    Model for quiz sessions and their state.
+    """
+    quiz_id: str
+    user_id: str
+    certification_type: str
+    questions: List[Dict[str, Any]] = field(default_factory=list)
+    status: str = "in_progress"  # in_progress, completed, abandoned
+    score: Optional[float] = None
+    started_at: datetime = field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None
+    time_limit_minutes: int = 30
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def validate(self) -> List[str]:
+        """Validate the quiz session."""
+        errors = []
+        
+        if not self.quiz_id or not self.quiz_id.strip():
+            errors.append("quiz_id is required and cannot be empty")
+        
+        if not self.user_id or not self.user_id.strip():
+            errors.append("user_id is required and cannot be empty")
+        
+        if not self.certification_type or not self.certification_type.strip():
+            errors.append("certification_type is required and cannot be empty")
+        
+        if self.status not in ["in_progress", "completed", "abandoned"]:
+            errors.append("status must be 'in_progress', 'completed', or 'abandoned'")
+        
+        if self.score is not None and (self.score < 0 or self.score > 100):
+            errors.append("score must be between 0 and 100")
+        
+        if self.time_limit_minutes < 1:
+            errors.append("time_limit_minutes must be positive")
+        
+        return errors
+
+    def is_valid(self) -> bool:
+        """Check if the quiz session is valid."""
+        return len(self.validate()) == 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            'quiz_id': self.quiz_id,
+            'user_id': self.user_id,
+            'certification_type': self.certification_type,
+            'questions': self.questions,
+            'status': self.status,
+            'score': self.score,
+            'started_at': self.started_at.isoformat(),
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'time_limit_minutes': self.time_limit_minutes,
+            'metadata': self.metadata
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'QuizSession':
+        """Create instance from dictionary."""
+        return cls(
+            quiz_id=data['quiz_id'],
+            user_id=data['user_id'],
+            certification_type=data['certification_type'],
+            questions=data.get('questions', []),
+            status=data.get('status', 'in_progress'),
+            score=data.get('score'),
+            started_at=datetime.fromisoformat(data['started_at']),
+            completed_at=datetime.fromisoformat(data['completed_at']) if data.get('completed_at') else None,
+            time_limit_minutes=data.get('time_limit_minutes', 30),
+            metadata=data.get('metadata', {})
+        )
+
+
+@dataclass
+class QuizResult:
+    """
+    Model for quiz results and scoring.
+    """
+    quiz_id: str
+    user_id: str
+    score: float
+    correct_answers: int
+    total_questions: int
+    percentage: float
+    results: List[Dict[str, Any]] = field(default_factory=list)
+    completed_at: datetime = field(default_factory=datetime.utcnow)
+    time_taken_minutes: Optional[int] = None
+    performance_summary: Dict[str, Any] = field(default_factory=dict)
+
+    def validate(self) -> List[str]:
+        """Validate the quiz result."""
+        errors = []
+        
+        if not self.quiz_id or not self.quiz_id.strip():
+            errors.append("quiz_id is required and cannot be empty")
+        
+        if not self.user_id or not self.user_id.strip():
+            errors.append("user_id is required and cannot be empty")
+        
+        if self.score < 0 or self.score > 100:
+            errors.append("score must be between 0 and 100")
+        
+        if self.correct_answers < 0:
+            errors.append("correct_answers cannot be negative")
+        
+        if self.total_questions < 1:
+            errors.append("total_questions must be positive")
+        
+        if self.correct_answers > self.total_questions:
+            errors.append("correct_answers cannot exceed total_questions")
+        
+        if self.percentage < 0 or self.percentage > 100:
+            errors.append("percentage must be between 0 and 100")
+        
+        return errors
+
+    def is_valid(self) -> bool:
+        """Check if the quiz result is valid."""
+        return len(self.validate()) == 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            'quiz_id': self.quiz_id,
+            'user_id': self.user_id,
+            'score': self.score,
+            'correct_answers': self.correct_answers,
+            'total_questions': self.total_questions,
+            'percentage': self.percentage,
+            'results': self.results,
+            'completed_at': self.completed_at.isoformat(),
+            'time_taken_minutes': self.time_taken_minutes,
+            'performance_summary': self.performance_summary
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'QuizResult':
+        """Create instance from dictionary."""
+        return cls(
+            quiz_id=data['quiz_id'],
+            user_id=data['user_id'],
+            score=data['score'],
+            correct_answers=data['correct_answers'],
+            total_questions=data['total_questions'],
+            percentage=data['percentage'],
+            results=data.get('results', []),
+            completed_at=datetime.fromisoformat(data['completed_at']),
+            time_taken_minutes=data.get('time_taken_minutes'),
+            performance_summary=data.get('performance_summary', {})
+        )
+
+
+@dataclass
+class StudyRecommendation:
+    """
+    Model for personalized study recommendations.
+    """
+    recommendation_id: str
+    user_id: str
+    type: str  # 'content', 'quiz', 'review', 'practice'
+    priority: int  # 1-10, higher is more important
+    content_id: Optional[str] = None
+    certification_type: Optional[str] = None
+    category: Optional[str] = None
+    reasoning: str = ""
+    estimated_time_minutes: int = 30
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    expires_at: Optional[datetime] = None
+    is_completed: bool = False
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def validate(self) -> List[str]:
+        """Validate the study recommendation."""
+        errors = []
+        
+        if not self.recommendation_id or not self.recommendation_id.strip():
+            errors.append("recommendation_id is required and cannot be empty")
+        
+        if not self.user_id or not self.user_id.strip():
+            errors.append("user_id is required and cannot be empty")
+        
+        if self.type not in ['content', 'quiz', 'review', 'practice']:
+            errors.append("type must be 'content', 'quiz', 'review', or 'practice'")
+        
+        if self.priority < 1 or self.priority > 10:
+            errors.append("priority must be between 1 and 10")
+        
+        if self.estimated_time_minutes < 1:
+            errors.append("estimated_time_minutes must be positive")
+        
+        return errors
+
+    def is_valid(self) -> bool:
+        """Check if the study recommendation is valid."""
+        return len(self.validate()) == 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            'recommendation_id': self.recommendation_id,
+            'user_id': self.user_id,
+            'type': self.type,
+            'priority': self.priority,
+            'content_id': self.content_id,
+            'certification_type': self.certification_type,
+            'category': self.category,
+            'reasoning': self.reasoning,
+            'estimated_time_minutes': self.estimated_time_minutes,
+            'created_at': self.created_at.isoformat(),
+            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
+            'is_completed': self.is_completed,
+            'metadata': self.metadata
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'StudyRecommendation':
+        """Create instance from dictionary."""
+        return cls(
+            recommendation_id=data['recommendation_id'],
+            user_id=data['user_id'],
+            type=data['type'],
+            priority=data['priority'],
+            content_id=data.get('content_id'),
+            certification_type=data.get('certification_type'),
+            category=data.get('category'),
+            reasoning=data.get('reasoning', ''),
+            estimated_time_minutes=data.get('estimated_time_minutes', 30),
+            created_at=datetime.fromisoformat(data['created_at']),
+            expires_at=datetime.fromisoformat(data['expires_at']) if data.get('expires_at') else None,
+            is_completed=data.get('is_completed', False),
+            metadata=data.get('metadata', {})
+        )
+
+
+# Update the validate_model function to include new models
+def validate_model(model: Union[ContentMetadata, QuestionAnswer, UserProgress, VectorDocument, 
+                               UserProfile, QuizSession, StudyRecommendation, QuizResult]) -> bool:
+    """
+    Validate any model instance.
+    
+    Args:
+        model: Instance of any data model
+        
+    Returns:
+        True if valid, False otherwise
+        
+    Raises:
+        ValueError: If validation fails with details
+    """
+    errors = model.validate()
+    if errors:
+        raise ValueError(f"Validation failed: {'; '.join(errors)}")
+    return True
