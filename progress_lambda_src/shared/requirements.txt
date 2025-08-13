@@ -1,0 +1,7 @@
+# Requirements for the shared models and interfaces module
+# This module uses only Python standard library components
+# No external dependencies required for the core models and interfaces
+
+# For development and testing (optional)
+# pytest>=7.0.0
+# mypy>=1.0.0
