@@ -16,7 +16,7 @@ The system supports two methods for certification detection:
 - **AIP** - AWS Certified AI Practitioner
 
 ### Associate Level
-- **MLA** - AWS Certified Machine Learning Engineer - Associate
+- **MLA** - AWS Certified Machine Learning Engineer - Associate ❌❌❌
 - **DEA** - AWS Certified Data Engineer - Associate
 - **DVA** - AWS Certified Developer - Associate
 - **SAA** - AWS Certified Solutions Architect - Associate
@@ -24,15 +24,15 @@ The system supports two methods for certification detection:
 
 ### Professional Level
 - **DOP** - AWS Certified DevOps Engineer - Professional
-- **SAP** - AWS Certified Solutions Architect - Professional
+- **SAP** - AWS Certified Solutions Architect - Professional 
 
 ### Specialty Level
 - **ANS** - AWS Certified Advanced Networking - Specialty
-- **MLS** - AWS Certified Machine Learning - Specialty
-- **SCS** - AWS Certified Security - Specialty
+- **MLS** - AWS Certified Machine Learning - Specialty  ❌❌❌
+- **SCS** - AWS Certified Security - Specialty   ❌❌❌
 
 ### General
-- **GENERAL** - Content not specific to any certification
+- **GENERAL** - Content not specific to any certification  ❌❌❌
 
 ## Filename Detection Rules
 

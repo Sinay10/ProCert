@@ -232,16 +232,32 @@ def search_questions_by_certification(certification_type: str, limit: int = 100)
         for hit in response["hits"]["hits"]:
             source = hit["_source"]
             
-            # Try to parse question data from text or metadata
-            question_data = parse_question_from_text(source.get("text", ""))
-            if question_data:
-                question_data.update({
+            # Try to get question data from metadata first, then parse from text
+            metadata = source.get("metadata", {})
+            if metadata and "question_text" in metadata and "answer_options" in metadata:
+                # Use metadata directly
+                question_data = {
+                    "question_text": metadata["question_text"],
+                    "answer_options": metadata["answer_options"],
+                    "correct_answer": metadata.get("correct_answer", "A"),  # Default to A if not specified
+                    "question_type": metadata.get("question_type", "multiple_choice"),
                     "content_id": source.get("content_id"),
                     "certification_type": source.get("certification_type"),
                     "category": source.get("category", "general"),
                     "difficulty": source.get("difficulty", "intermediate")
-                })
+                }
                 questions.append(question_data)
+            else:
+                # Fallback to parsing from text
+                question_data = parse_question_from_text(source.get("text", ""))
+                if question_data:
+                    question_data.update({
+                        "content_id": source.get("content_id"),
+                        "certification_type": source.get("certification_type"),
+                        "category": source.get("category", "general"),
+                        "difficulty": source.get("difficulty", "intermediate")
+                    })
+                    questions.append(question_data)
         
         return questions
         
