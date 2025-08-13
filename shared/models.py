@@ -1144,8 +1144,7 @@ def validate_models(models: List[Union[ContentMetadata, QuestionAnswer, UserProg
             raise ValueError(f"Model at index {i} failed validation: {str(e)}")
     return True
 
-@dataclas
-s
+@dataclass
 class QuizSession:
     """
     Model for quiz sessions and their state.
