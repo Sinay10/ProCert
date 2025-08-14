@@ -718,6 +718,48 @@ class ProcertInfrastructureStack(Stack):
             }
         )
 
+        # 10.6. RECOMMENDATION ENGINE LAMBDA
+        # Recommendation lambda with conditional bundling
+        if skip_bundling:
+            recommendation_lambda_code = lambda_.Code.from_asset("recommendation_lambda_src")
+        else:
+            recommendation_lambda_code = lambda_.Code.from_asset("recommendation_lambda_src",
+                bundling=BundlingOptions(
+                    image=lambda_.Runtime.PYTHON_3_11.bundling_image,
+                    entrypoint=["/bin/bash", "-c"],
+                    command=[
+                        "pip install --platform manylinux2014_x86_64 --only-binary=:all: -r requirements.txt -t /asset-output && cp -au . /asset-output"
+                    ]
+                )
+            )
+        
+        # ML Layer for advanced recommendation algorithms
+        ml_layer = lambda_.LayerVersion.from_layer_version_arn(
+            self, 'MLLayer', 
+            'arn:aws:lambda:us-east-1:353207798766:layer:procert-ml-dependencies:1'
+        )
+        
+        recommendation_lambda = lambda_.Function(self, "ProcertRecommendationLambda",
+            architecture=lambda_.Architecture.X86_64,
+            description="Provides ML-based personalized study recommendations for the ProCert Learning Platform.",
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="main.lambda_handler",
+            code=recommendation_lambda_code,
+            timeout=Duration.seconds(30),
+            memory_size=1024,
+            layers=[ml_layer],
+            environment={
+                "USER_PROGRESS_TABLE_NAME": self.user_progress_table.table_name,
+                "CONTENT_METADATA_TABLE_NAME": self.content_metadata_table.table_name,
+                "RECOMMENDATIONS_TABLE_NAME": self.recommendations_table.table_name
+            }
+        )
+
+        # Grant DynamoDB permissions to recommendation lambda
+        self.user_progress_table.grant_read_data(recommendation_lambda)
+        self.content_metadata_table.grant_read_data(recommendation_lambda)
+        self.recommendations_table.grant_read_write_data(recommendation_lambda)
+
         # 11. API GATEWAY
         api = apigateway.RestApi(self, "ProcertApi",
             rest_api_name="ProCert Service",
@@ -820,9 +862,34 @@ class ProcertInfrastructureStack(Stack):
         dashboard_resource = progress_user_resource.add_resource("dashboard")
         dashboard_resource.add_method("GET", progress_integration, authorizer=jwt_authorizer)
 
+        # Recommendation endpoints (protected)
+        recommendation_integration = apigateway.LambdaIntegration(recommendation_lambda)
+        recommendations_resource = api.root.add_resource("recommendations")
+        recommendations_user_resource = recommendations_resource.add_resource("{user_id}")
+
+        # GET /recommendations/{user_id} - Get personalized recommendations (protected)
+        recommendations_user_resource.add_method("GET", recommendation_integration, authorizer=jwt_authorizer)
+
+        # GET /recommendations/{user_id}/study-path - Get personalized study path (protected)
+        study_path_resource = recommendations_user_resource.add_resource("study-path")
+        study_path_resource.add_method("GET", recommendation_integration, authorizer=jwt_authorizer)
+
+        # POST /recommendations/{user_id}/feedback - Record recommendation feedback (protected)
+        feedback_resource = recommendations_user_resource.add_resource("feedback")
+        feedback_resource.add_method("POST", recommendation_integration, authorizer=jwt_authorizer)
+
+        # GET /recommendations/{user_id}/weak-areas - Get weak areas analysis (protected)
+        weak_areas_resource = recommendations_user_resource.add_resource("weak-areas")
+        weak_areas_resource.add_method("GET", recommendation_integration, authorizer=jwt_authorizer)
+
+        # GET /recommendations/{user_id}/content-progression - Get content difficulty progression (protected)
+        content_progression_resource = recommendations_user_resource.add_resource("content-progression")
+        content_progression_resource.add_method("GET", recommendation_integration, authorizer=jwt_authorizer)
+
         # Maintain backward compatibility
         query_resource = api.root.add_resource("query")
         query_resource.add_method("POST", chat_integration)
 
         CfnOutput(self, "ApiEndpoint", value=api.url)
         CfnOutput(self, "ProgressLambdaArn", value=progress_lambda.function_arn)
+        CfnOutput(self, "RecommendationLambdaArn", value=recommendation_lambda.function_arn)
