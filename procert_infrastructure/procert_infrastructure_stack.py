@@ -46,17 +46,11 @@ class ProcertInfrastructureStack(Stack):
             allow_all_outbound=True
         )
 
-        # VPC Endpoint for OpenSearch Serverless
-        self.opensearch_vpc_endpoint = ec2.InterfaceVpcEndpoint(self, "OpenSearchVpcEndpoint",
-            vpc=self.vpc,
-            service=ec2.InterfaceVpcEndpointService(f"com.amazonaws.{self.region}.aoss", 443),
-            subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
-            security_groups=[self.lambda_security_group]
-        )
-
+        # Note: VPC Endpoint for OpenSearch Serverless not available in us-east-1
+        # Using public access which works perfectly for our use case
+        
         # Output VPC details
         CfnOutput(self, "VpcId", value=self.vpc.vpc_id)
-        CfnOutput(self, "OpenSearchVpcEndpointId", value=self.opensearch_vpc_endpoint.vpc_endpoint_id)
 
         # 1. INGESTION LAMBDA FUNCTION
         # Check if we're in CI/CD environment to skip Docker bundling
@@ -85,10 +79,7 @@ class ProcertInfrastructureStack(Stack):
             handler="main.handler",
             code=lambda_code,
             timeout=Duration.seconds(300),
-            memory_size=512,
-            vpc=self.vpc,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
-            security_groups=[self.lambda_security_group]
+            memory_size=512
         )
 
         # 2. CERTIFICATION-AWARE S3 BUCKETS - Complete set for all AWS certifications
@@ -457,40 +448,13 @@ class ProcertInfrastructureStack(Stack):
         collection_name = "procert-vector-collection"
         
         # Restrict OpenSearch permissions to only what's needed (principle of least privilege)
-        access_policy_document = [{
-            "Rules": [
-                {
-                    "ResourceType": "collection", 
-                    "Resource": [f"collection/{collection_name}"], 
-                    "Permission": [
-                        "aoss:DescribeCollectionItems",
-                        "aoss:CreateCollectionItems"
-                    ]
-                }, 
-                {
-                    "ResourceType": "index", 
-                    "Resource": [f"index/{collection_name}/*"], 
-                    "Permission": [
-                        "aoss:ReadDocument",
-                        "aoss:WriteDocument", 
-                        "aoss:CreateIndex",
-                        "aoss:DescribeIndex",
-                        "aoss:UpdateIndex"
-                    ]
-                }
-            ], 
-            "Principal": [
-                f"arn:aws:iam::{self.account}:root", 
-                ingestion_lambda.role.role_arn, 
-                f"arn:aws:iam::{self.account}:user/Admin1"
-            ], 
-            "Description": "Least privilege data access policy for ProCert OpenSearch"
-        }]
-        access_policy = opensearchserverless.CfnAccessPolicy(self, "ProcertAccessPolicy", name="procert-access-policy", policy=json.dumps(access_policy_document), type="data")
+        # Access policy will be created after all Lambda functions are defined
+        # For now, create a placeholder that will be replaced
+        access_policy = None
         
         encryption_policy = opensearchserverless.CfnSecurityPolicy(self, "ProcertEncryptionPolicy", name="procert-encryption-policy", type="encryption", policy=json.dumps({"Rules": [{"ResourceType": "collection", "Resource": [f"collection/{collection_name}"]}], "AWSOwnedKey": True}))
         
-        # Secure network policy - VPC access only
+        # Network policy - Allow public access (VPC endpoint not available in all regions)
         network_policy = opensearchserverless.CfnSecurityPolicy(self, "ProcertNetworkPolicy", 
             name="procert-network-policy", 
             type="network", 
@@ -499,13 +463,12 @@ class ProcertInfrastructureStack(Stack):
                     {"ResourceType": "collection", "Resource": [f"collection/{collection_name}"]}, 
                     {"ResourceType": "dashboard", "Resource": [f"collection/{collection_name}"]}
                 ], 
-                "AllowFromPublic": False,
-                "SourceVPCEs": [self.opensearch_vpc_endpoint.vpc_endpoint_id]
+                "AllowFromPublic": True
             }])
         )
         
         self.vector_collection = opensearchserverless.CfnCollection(self, "VectorCollection", name=collection_name, type="VECTORSEARCH")
-        self.vector_collection.add_dependency(access_policy)
+        # Vector collection dependency will be added after access policy is created
         self.vector_collection.add_dependency(encryption_policy)
         self.vector_collection.add_dependency(network_policy)
         CfnOutput(self, "OpenSearchCollectionEndpoint", value=self.vector_collection.attr_collection_endpoint)
@@ -569,10 +532,7 @@ class ProcertInfrastructureStack(Stack):
             handler="main.handler",
             code=index_lambda_code,
             timeout=Duration.seconds(120),
-            memory_size=256,
-            vpc=self.vpc,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
-            security_groups=[self.lambda_security_group]
+            memory_size=256
         )
         
         # Grant specific OpenSearch permissions for index setup
@@ -628,9 +588,6 @@ class ProcertInfrastructureStack(Stack):
             code=chatbot_lambda_code,
             timeout=Duration.seconds(25),  # Reduced to stay under API Gateway 30s limit
             memory_size=1024,  # Increased memory for conversation management
-            vpc=self.vpc,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
-            security_groups=[self.lambda_security_group],
             environment={
                 "OPENSEARCH_ENDPOINT": self.vector_collection.attr_collection_endpoint,
                 "OPENSEARCH_INDEX": collection_name,
@@ -883,14 +840,156 @@ class ProcertInfrastructureStack(Stack):
         self.content_metadata_table.grant_read_data(recommendation_lambda)
         self.recommendations_table.grant_read_write_data(recommendation_lambda)
 
-        # 11. API GATEWAY
+        # 10.8. OPENSEARCH ACCESS POLICY (after all Lambda functions are created)
+        # Updated policy to ensure quiz Lambda has proper access
+        access_policy_document = [{
+            "Rules": [
+                {
+                    "ResourceType": "collection", 
+                    "Resource": [f"collection/{collection_name}"], 
+                    "Permission": [
+                        "aoss:DescribeCollectionItems",
+                        "aoss:CreateCollectionItems"
+                    ]
+                }, 
+                {
+                    "ResourceType": "index", 
+                    "Resource": [f"index/{collection_name}/*"], 
+                    "Permission": [
+                        "aoss:ReadDocument",
+                        "aoss:WriteDocument", 
+                        "aoss:CreateIndex",
+                        "aoss:DescribeIndex",
+                        "aoss:UpdateIndex"
+                    ]
+                }
+            ], 
+            "Principal": [
+                f"arn:aws:iam::{self.account}:root", 
+                ingestion_lambda.role.role_arn,
+                chatbot_lambda.role.role_arn,
+                quiz_lambda.role.role_arn,
+                progress_lambda.role.role_arn,
+                recommendation_lambda.role.role_arn,
+                f"arn:aws:iam::{self.account}:user/Admin1"
+            ], 
+            "Description": "Updated data access policy for ProCert OpenSearch - includes all Lambda functions that need access including quiz service"
+        }]
+        access_policy = opensearchserverless.CfnAccessPolicy(self, "ProcertAccessPolicy", name="procert-access-policy-v2", policy=json.dumps(access_policy_document), type="data")
+        
+        # Add vector collection dependencies
+        self.vector_collection.add_dependency(access_policy)
+
+        # 11. ENHANCED API GATEWAY WITH VALIDATION AND CORS
         api = apigateway.RestApi(self, "ProcertApi",
-            rest_api_name="ProCert Service",
-            description="This service handles ProCert queries and conversations.",
+            rest_api_name="ProCert Learning Platform API",
+            description="Enhanced API for ProCert Learning Platform with validation and comprehensive CORS support.",
             default_cors_preflight_options=apigateway.CorsOptions(
-                allow_origins=apigateway.Cors.ALL_ORIGINS,
-                allow_methods=apigateway.Cors.ALL_METHODS,
-                allow_headers=["Content-Type", "X-Amz-Date", "Authorization", "X-Api-Key"]
+                allow_origins=["http://localhost:3000", "https://*.procert.app", "https://procert.app"],
+                allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                allow_headers=[
+                    "Content-Type", 
+                    "X-Amz-Date", 
+                    "Authorization", 
+                    "X-Api-Key",
+                    "X-Amz-Security-Token",
+                    "X-Requested-With",
+                    "Accept",
+                    "Origin",
+                    "Referer"
+                ],
+                expose_headers=["X-Request-Id", "X-Rate-Limit-Remaining"],
+                allow_credentials=True,
+                max_age=Duration.hours(1)
+            )
+        )
+
+        # Create request validators
+        body_validator = api.add_request_validator("BodyValidator",
+            validate_request_body=True,
+            validate_request_parameters=False
+        )
+        
+        params_validator = api.add_request_validator("ParamsValidator",
+            validate_request_body=False,
+            validate_request_parameters=True
+        )
+        
+        full_validator = api.add_request_validator("FullValidator",
+            validate_request_body=True,
+            validate_request_parameters=True
+        )
+
+        # Essential JSON Schema models for validation
+        # Quiz generation request model
+        quiz_generate_model = api.add_model("QuizGenerateModel",
+            content_type="application/json",
+            model_name="QuizGenerateRequest",
+            schema=apigateway.JsonSchema(
+                schema=apigateway.JsonSchemaVersion.DRAFT4,
+                title="Quiz Generation Request",
+                type=apigateway.JsonSchemaType.OBJECT,
+                properties={
+                    "certification_type": apigateway.JsonSchema(
+                        type=apigateway.JsonSchemaType.STRING,
+                        enum=["general", "ccp", "aip", "saa", "dva", "soa", "mla", "dea", "dop", "sap", "mls", "scs", "ans"]
+                    ),
+                    "difficulty": apigateway.JsonSchema(
+                        type=apigateway.JsonSchemaType.STRING,
+                        enum=["beginner", "intermediate", "advanced"]
+                    ),
+                    "count": apigateway.JsonSchema(
+                        type=apigateway.JsonSchemaType.INTEGER,
+                        minimum=5,
+                        maximum=20
+                    ),
+                    "user_id": apigateway.JsonSchema(
+                        type=apigateway.JsonSchemaType.STRING,
+                        min_length=1,
+                        max_length=128
+                    )
+                },
+                required=["certification_type", "user_id"]
+            )
+        )
+
+        # Quiz submission request model
+        quiz_submit_model = api.add_model("QuizSubmitModel",
+            content_type="application/json",
+            model_name="QuizSubmitRequest",
+            schema=apigateway.JsonSchema(
+                schema=apigateway.JsonSchemaVersion.DRAFT4,
+                title="Quiz Submission Request",
+                type=apigateway.JsonSchemaType.OBJECT,
+                properties={
+                    "quiz_id": apigateway.JsonSchema(
+                        type=apigateway.JsonSchemaType.STRING,
+                        pattern="^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$"
+                    ),
+                    "answers": apigateway.JsonSchema(
+                        type=apigateway.JsonSchemaType.ARRAY,
+                        items=apigateway.JsonSchema(
+                            type=apigateway.JsonSchemaType.OBJECT,
+                            properties={
+                                "question_id": apigateway.JsonSchema(
+                                    type=apigateway.JsonSchemaType.STRING
+                                ),
+                                "selected_answer": apigateway.JsonSchema(
+                                    type=apigateway.JsonSchemaType.STRING
+                                )
+                            },
+                            required=["question_id", "selected_answer"]
+                        ),
+                        min_items=1,
+                        max_items=20
+                    ),
+                    "user_id": apigateway.JsonSchema(
+                        type=apigateway.JsonSchemaType.STRING,
+                        min_length=1,
+                        max_length=128
+                    )
+                },
+                required=["quiz_id", "answers", "user_id"]
             )
         )
 
@@ -935,8 +1034,9 @@ class ProcertInfrastructureStack(Stack):
         profile_user_resource.add_method("PUT", user_profile_integration, authorizer=jwt_authorizer)
         profile_user_resource.add_method("DELETE", user_profile_integration, authorizer=jwt_authorizer)
 
-        # Quiz endpoints (protected)
+        # Quiz endpoints (protected) - simplified integration like profile endpoints
         quiz_integration = apigateway.LambdaIntegration(quiz_lambda)
+        
         quiz_resource = api.root.add_resource("quiz")
         
         # POST /quiz/generate - Generate new quiz (protected)

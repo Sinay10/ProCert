@@ -693,13 +693,27 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         path_parameters = event.get('pathParameters') or {}
         body = event.get('body', '{}')
         
+        # Extract authenticated user context from JWT authorizer
+        request_context = event.get('requestContext', {})
+        authorizer_context = request_context.get('authorizer', {})
+        authenticated_user_id = authorizer_context.get('user_id')
+        
+        logger.info(f"Processing {http_method} {path}")
+        logger.info(f"Authenticated user: {authenticated_user_id}")
+        logger.info(f"Authorizer context: {authorizer_context}")
+        
+        if not authenticated_user_id:
+            logger.error("No authenticated user found in request context")
+            return create_response(403, {'error': 'User authentication required'})
+        
         # Parse JSON body
         try:
             request_body = json.loads(body) if body else {}
         except json.JSONDecodeError:
             return create_response(400, {'error': 'Invalid JSON in request body'})
         
-        logger.info(f"Processing {http_method} {path}")
+        # Add authenticated user to request body for handlers
+        request_body['authenticated_user_id'] = authenticated_user_id
         
         # Route the request
         if path.startswith('/quiz/generate') and http_method == 'POST':
@@ -708,10 +722,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return handle_submit_quiz(request_body)
         elif path.startswith('/quiz/history/') and http_method == 'GET':
             user_id = path_parameters.get('user_id')
+            # Validate that user can only access their own history
+            if user_id != authenticated_user_id:
+                logger.error(f"User {authenticated_user_id} attempted to access history for {user_id}")
+                return create_response(403, {'error': 'Access denied: can only access your own quiz history'})
             return handle_get_quiz_history(user_id, request_body)
         elif path.startswith('/quiz/') and http_method == 'GET':
             quiz_id = path_parameters.get('quiz_id')
-            return handle_get_quiz(quiz_id)
+            return handle_get_quiz(quiz_id, authenticated_user_id)
         else:
             return create_response(404, {'error': 'Endpoint not found'})
             
@@ -723,16 +741,24 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 def handle_generate_quiz(request_body: Dict[str, Any]) -> Dict[str, Any]:
     """Handle quiz generation request."""
     try:
+        # Get authenticated user from request context
+        authenticated_user_id = request_body.get('authenticated_user_id')
+        if not authenticated_user_id:
+            return create_response(403, {'error': 'Authentication required'})
+        
         # Validate required fields
-        required_fields = ['user_id', 'certification_type']
+        required_fields = ['certification_type']
         for field in required_fields:
             if not request_body.get(field):
                 return create_response(400, {'error': f'Missing required field: {field}'})
         
-        user_id = request_body['user_id']
+        # Use authenticated user ID (ignore any user_id in request body for security)
+        user_id = authenticated_user_id
         certification_type = request_body['certification_type'].upper()
-        question_count = request_body.get('question_count', 10)
+        question_count = request_body.get('count', 10)  # Use 'count' as per API schema
         difficulty = request_body.get('difficulty', 'mixed')
+        
+        logger.info(f"Generating quiz for user {user_id}, certification {certification_type}, count {question_count}")
         
         # Validate question count
         if not isinstance(question_count, int) or question_count < 1 or question_count > 50:
@@ -743,13 +769,22 @@ def handle_generate_quiz(request_body: Dict[str, Any]) -> Dict[str, Any]:
         
         return create_response(200, {
             'message': 'Quiz generated successfully',
-            'quiz': quiz_session
+            'quiz_id': quiz_session.get('quiz_id'),
+            'questions': quiz_session.get('questions', []),
+            'metadata': {
+                'count': question_count,
+                'difficulty': difficulty,
+                'certification_type': certification_type
+            }
         })
         
     except ValueError as e:
+        logger.error(f"Validation error in quiz generation: {str(e)}")
         return create_response(400, {'error': str(e)})
     except Exception as e:
         logger.error(f"Error generating quiz: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return create_response(500, {'error': 'Failed to generate quiz'})
 
 

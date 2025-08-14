@@ -195,6 +195,20 @@ def generate_policy(principal_id: str, effect: str, resource: str) -> Dict[str, 
     Returns:
         IAM policy document
     """
+    # For Allow policies, use wildcard to allow access to all API resources
+    # For Deny policies, use the specific resource
+    if effect == 'Allow':
+        # Extract the API Gateway ARN base and allow all resources
+        # Format: arn:aws:execute-api:region:account:api-id/stage/*/*
+        resource_parts = resource.split('/')
+        if len(resource_parts) >= 3:
+            api_base = '/'.join(resource_parts[:3])  # arn:aws:execute-api:region:account:api-id/stage
+            wildcard_resource = f"{api_base}/*/*"
+        else:
+            wildcard_resource = resource
+    else:
+        wildcard_resource = resource
+    
     policy = {
         'principalId': principal_id,
         'policyDocument': {
@@ -203,7 +217,7 @@ def generate_policy(principal_id: str, effect: str, resource: str) -> Dict[str, 
                 {
                     'Action': 'execute-api:Invoke',
                     'Effect': effect,
-                    'Resource': resource
+                    'Resource': wildcard_resource
                 }
             ]
         }

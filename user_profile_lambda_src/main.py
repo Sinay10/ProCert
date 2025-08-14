@@ -78,13 +78,19 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         path_parameters = event.get('pathParameters') or {}
         body = event.get('body', '{}')
         
+        # Extract authenticated user context from JWT authorizer (for protected endpoints)
+        request_context = event.get('requestContext', {})
+        authorizer_context = request_context.get('authorizer', {})
+        authenticated_user_id = authorizer_context.get('user_id')
+        
+        logger.info(f"Processing {http_method} {path}")
+        logger.info(f"Authenticated user: {authenticated_user_id}")
+        
         # Parse JSON body
         try:
             request_body = json.loads(body) if body else {}
         except json.JSONDecodeError:
             return create_response(400, {'error': 'Invalid JSON in request body'})
-        
-        logger.info(f"Processing {http_method} {path}")
         
         # Route the request
         if path.startswith('/auth/register') and http_method == 'POST':
@@ -97,12 +103,30 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return handle_confirm_forgot_password(request_body)
         elif path.startswith('/profile/') and http_method == 'GET':
             user_id = path_parameters.get('user_id')
+            # Validate that user can only access their own profile
+            if not authenticated_user_id:
+                return create_response(403, {'error': 'Authentication required'})
+            if user_id != authenticated_user_id:
+                logger.error(f"User {authenticated_user_id} attempted to access profile for {user_id}")
+                return create_response(403, {'error': 'Access denied: can only access your own profile'})
             return handle_get_profile(user_id)
         elif path.startswith('/profile/') and http_method == 'PUT':
             user_id = path_parameters.get('user_id')
+            # Validate that user can only update their own profile
+            if not authenticated_user_id:
+                return create_response(403, {'error': 'Authentication required'})
+            if user_id != authenticated_user_id:
+                logger.error(f"User {authenticated_user_id} attempted to update profile for {user_id}")
+                return create_response(403, {'error': 'Access denied: can only update your own profile'})
             return handle_update_profile(user_id, request_body)
         elif path.startswith('/profile/') and http_method == 'DELETE':
             user_id = path_parameters.get('user_id')
+            # Validate that user can only delete their own profile
+            if not authenticated_user_id:
+                return create_response(403, {'error': 'Authentication required'})
+            if user_id != authenticated_user_id:
+                logger.error(f"User {authenticated_user_id} attempted to delete profile for {user_id}")
+                return create_response(403, {'error': 'Access denied: can only delete your own profile'})
             return handle_delete_profile(user_id)
         else:
             return create_response(404, {'error': 'Endpoint not found'})
