@@ -2,208 +2,138 @@
 """
 Debug Weak Areas Detection
 
-This script specifically debugs why weak areas aren't being detected.
+Debug why the weak areas detection isn't working as expected.
 """
 
 import json
 import boto3
 import time
-from datetime import datetime, timedelta
 from decimal import Decimal
+from datetime import datetime, timedelta
 
-# Configuration
+LAMBDA_NAME = "ProcertInfrastructureStac-ProcertRecommendationLam-R6RNNN1QUHys"
 ACCOUNT_ID = "353207798766"
 REGION = "us-east-1"
-TEST_USER_ID = "weak-debug-user"
 
-def test_weak_area_detection_directly():
-    """Test weak area detection by calling the Lambda directly with detailed logging."""
-    print("🔍 Testing weak area detection directly...")
+def debug_weak_areas():
+    """Debug the weak areas detection."""
+    print("🔍 Debugging Weak Areas Detection")
+    print("=" * 50)
     
+    # Create test data with clear weak performance
     dynamodb = boto3.resource('dynamodb', region_name=REGION)
+    content_table = dynamodb.Table(f'procert-content-metadata-{ACCOUNT_ID}')
+    progress_table = dynamodb.Table(f'procert-user-progress-{ACCOUNT_ID}')
+    
+    test_user_id = f'debug-user-{int(time.time())}'
+    
+    # Create content
+    content_table.put_item(Item={
+        'content_id': 'debug-ec2-content',
+        'certification_type': 'SAA',
+        'title': 'EC2 Debug Content',
+        'content_type': 'study_guide',
+        'category': 'EC2',
+        'difficulty_level': 'beginner',
+        'created_at': datetime.utcnow().isoformat(),
+        'updated_at': datetime.utcnow().isoformat(),
+        'version': '1.0',
+        'chunk_count': 1
+    })
+    
+    # Create multiple weak progress records for EC2
+    weak_scores = [45.0, 50.0, 55.0, 48.0, 52.0]  # All below 70%
+    
+    for i, score in enumerate(weak_scores):
+        progress_table.put_item(Item={
+            'user_id': test_user_id,
+            'content_id_certification': f'debug-ec2-content#{i}#SAA',  # Unique keys
+            'content_id': 'debug-ec2-content',
+            'certification_type': 'SAA',
+            'progress_type': 'answered',
+            'score': Decimal(str(score)),
+            'time_spent': 300,
+            'timestamp': (datetime.utcnow() - timedelta(hours=i)).isoformat()
+        })
+    
+    print(f"📝 Created test data for user: {test_user_id}")
+    print(f"   📊 EC2 scores: {weak_scores} (avg: {sum(weak_scores)/len(weak_scores):.1f}%)")
+    
+    # Wait for consistency
+    time.sleep(3)
+    
+    # Test weak areas detection
     lambda_client = boto3.client('lambda', region_name=REGION)
     
+    event = {
+        'httpMethod': 'GET',
+        'path': f'/recommendations/{test_user_id}/weak-areas',
+        'queryStringParameters': {
+            'certification_type': 'SAA'
+        }
+    }
+    
     try:
-        # Create very obvious weak area data
-        print("   📝 Creating obvious weak area data...")
-        
-        # Content metadata
-        content_table = dynamodb.Table(f'procert-content-metadata-{ACCOUNT_ID}')
-        
-        content_item = {
-            'content_id': 'weak-debug-ec2',
-            'certification_type': 'SAA',
-            'title': 'EC2 Weak Debug Content',
-            'content_type': 'study_guide',
-            'category': 'EC2',
-            'difficulty_level': 'beginner',
-            'created_at': datetime.utcnow().isoformat(),
-            'updated_at': datetime.utcnow().isoformat(),
-            'version': '1.0',
-            'chunk_count': 5
-        }
-        
-        content_table.put_item(Item=content_item)
-        
-        # User progress with MANY attempts and consistently poor performance
-        progress_table = dynamodb.Table(f'procert-user-progress-{ACCOUNT_ID}')
-        
-        # Create 5 attempts with very poor scores
-        progress_items = []
-        for i in range(5):
-            progress_items.append({
-                'user_id': TEST_USER_ID,
-                'content_id_certification': 'weak-debug-ec2#SAA',
-                'content_id': 'weak-debug-ec2',
-                'certification_type': 'SAA',
-                'progress_type': 'answered',
-                'score': Decimal(str(20.0 + i * 5)),  # 20%, 25%, 30%, 35%, 40%
-                'time_spent': 600,
-                'timestamp': (datetime.utcnow() - timedelta(days=5-i)).isoformat()
-            })
-        
-        for progress in progress_items:
-            progress_table.put_item(Item=progress)
-        
-        print("   ✅ Created 5 attempts with scores: 20%, 25%, 30%, 35%, 40%")
-        print("   📊 Average: 30% (EXTREMELY weak - should definitely be detected)")
-        
-        # Wait for consistency
-        time.sleep(3)
-        
-        # Test weak areas detection
-        lambda_name = "ProcertInfrastructureStac-ProcertRecommendationLam-R6RNNN1QUHys"
-        
-        weak_areas_event = {
-            'httpMethod': 'GET',
-            'path': f'/recommendations/{TEST_USER_ID}/weak-areas',
-            'queryStringParameters': {
-                'certification_type': 'SAA'
-            }
-        }
-        
-        print("\n   🧪 Testing weak areas detection...")
-        
         response = lambda_client.invoke(
-            FunctionName=lambda_name,
+            FunctionName=LAMBDA_NAME,
             InvocationType='RequestResponse',
-            Payload=json.dumps(weak_areas_event)
+            Payload=json.dumps(event)
         )
         
         result = json.loads(response['Payload'].read())
         
-        print(f"      Status: {result.get('statusCode')}")
-        
         if result.get('statusCode') == 200:
-            body = json.loads(result['body'])
+            body = json.loads(result.get('body', '{}'))
+            
+            print("\n🔍 Weak Areas Response:")
+            print(json.dumps(body, indent=2, default=str))
+            
             weak_areas = body.get('weak_areas', {})
-            
-            print(f"      Response keys: {list(weak_areas.keys())}")
-            
             weak_categories = weak_areas.get('weak_categories', [])
-            print(f"      Weak categories detected: {len(weak_categories)}")
+            category_performance = weak_areas.get('category_performance', {})
+            
+            print(f"\n📊 Analysis:")
+            print(f"   Weak categories found: {len(weak_categories)}")
+            print(f"   Category performance data: {len(category_performance)} categories")
+            
+            if 'EC2' in category_performance:
+                ec2_perf = category_performance['EC2']
+                print(f"   EC2 performance: {ec2_perf}")
+            else:
+                print("   ❌ EC2 not found in category performance")
             
             if weak_categories:
-                for weak_cat in weak_categories:
-                    print(f"        ✅ {weak_cat.get('category')}: {weak_cat.get('avg_score', 0):.1f}% (severity: {weak_cat.get('severity', 'unknown')})")
+                for cat in weak_categories:
+                    print(f"   Weak: {cat['category']} - {cat['avg_score']:.1f}% ({cat['attempts']} attempts)")
             else:
-                print("      ❌ NO WEAK CATEGORIES DETECTED!")
-                print("      This is definitely a bug - 30% average should be detected")
-            
-            # Check category performance data
-            category_performance = weak_areas.get('category_performance', {})
-            print(f"      Category performance data: {len(category_performance)} categories")
-            
-            for category, perf in category_performance.items():
-                if isinstance(perf, dict):
-                    avg_score = perf.get('avg_score', 0)
-                    attempts = perf.get('attempts', 0)
-                    print(f"        - {category}: {avg_score:.1f}% ({attempts} attempts)")
-            
-            # Check recommendations
-            recommendations = weak_areas.get('recommendations', [])
-            print(f"      Recommendations: {len(recommendations)}")
-            for rec in recommendations[:3]:
-                print(f"        - {rec}")
+                print("   ❌ No weak categories detected")
         
         else:
-            print(f"      ❌ Error: {result.get('body')}")
-        
-        # Also test the recommendation generation to see if it picks up weak areas
-        print("\n   🧪 Testing recommendation generation...")
-        
-        rec_event = {
-            'httpMethod': 'GET',
-            'path': f'/recommendations/{TEST_USER_ID}',
-            'queryStringParameters': {
-                'certification_type': 'SAA',
-                'limit': '10'
-            }
-        }
-        
-        response = lambda_client.invoke(
-            FunctionName=lambda_name,
-            InvocationType='RequestResponse',
-            Payload=json.dumps(rec_event)
-        )
-        
-        result = json.loads(response['Payload'].read())
-        
-        if result.get('statusCode') == 200:
-            body = json.loads(result['body'])
-            recommendations = body.get('recommendations', [])
-            
-            print(f"      Recommendations generated: {len(recommendations)}")
-            
-            weak_area_recs = [r for r in recommendations if 'EC2' in r.get('reasoning', '') or r.get('priority', 0) >= 7]
-            print(f"      High-priority/EC2 recommendations: {len(weak_area_recs)}")
-            
-            for rec in recommendations:
-                print(f"        - {rec.get('type', 'unknown')} (Priority: {rec.get('priority', 0)})")
-                print(f"          Reasoning: {rec.get('reasoning', 'No reasoning')}")
-        
-        # Cleanup
-        print("\n   🧹 Cleaning up...")
-        
-        # Clean up content
-        try:
-            content_table.delete_item(Key={
-                'content_id': 'weak-debug-ec2',
-                'certification_type': 'SAA'
-            })
-        except Exception:
-            pass
-        
-        # Clean up progress
-        try:
-            response = progress_table.query(
-                KeyConditionExpression='user_id = :user_id',
-                ExpressionAttributeValues={':user_id': TEST_USER_ID}
-            )
-            
-            for item in response['Items']:
-                progress_table.delete_item(Key={
-                    'user_id': item['user_id'],
-                    'content_id_certification': item['content_id_certification']
-                })
-        except Exception:
-            pass
-        
-        print("   ✅ Cleanup complete")
-        
+            print(f"❌ Error: HTTP {result.get('statusCode')}")
+            if 'body' in result:
+                error_body = json.loads(result['body'])
+                print(f"Error: {error_body}")
+    
     except Exception as e:
-        print(f"   ❌ Test failed: {str(e)}")
-
-def main():
-    """Run weak area debugging."""
-    print("🐛 Debugging Weak Area Detection")
-    print("=" * 50)
+        print(f"❌ Exception: {str(e)}")
     
-    test_weak_area_detection_directly()
-    
-    print("\n" + "=" * 50)
-    print("🔍 WEAK AREA DEBUG COMPLETE")
-    print("=" * 50)
+    # Cleanup
+    print("\n🧹 Cleaning up...")
+    try:
+        content_table.delete_item(Key={
+            'content_id': 'debug-ec2-content',
+            'certification_type': 'SAA'
+        })
+        
+        for i in range(len(weak_scores)):
+            progress_table.delete_item(Key={
+                'user_id': test_user_id,
+                'content_id_certification': f'debug-ec2-content#{i}#SAA'
+            })
+        
+        print("✅ Cleanup complete")
+    except Exception as e:
+        print(f"⚠️  Cleanup failed: {str(e)}")
 
 if __name__ == "__main__":
-    main()
+    debug_weak_areas()

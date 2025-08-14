@@ -47,22 +47,11 @@ class ProcertInfrastructureStack(Stack):
         )
 
         # VPC Endpoint for OpenSearch Serverless
-        self.opensearch_vpc_endpoint = ec2.VpcEndpoint(self, "OpenSearchVpcEndpoint",
+        self.opensearch_vpc_endpoint = ec2.InterfaceVpcEndpoint(self, "OpenSearchVpcEndpoint",
             vpc=self.vpc,
-            service=ec2.VpcEndpointService(f"com.amazonaws.{self.region}.aoss", 443),
-            vpc_endpoint_type=ec2.VpcEndpointType.INTERFACE,
+            service=ec2.InterfaceVpcEndpointService(f"com.amazonaws.{self.region}.aoss", 443),
             subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
-            security_groups=[self.lambda_security_group],
-            policy_document=iam.PolicyDocument(
-                statements=[
-                    iam.PolicyStatement(
-                        effect=iam.Effect.ALLOW,
-                        principals=[iam.AnyPrincipal()],
-                        actions=["aoss:*"],
-                        resources=["*"]
-                    )
-                ]
-            )
+            security_groups=[self.lambda_security_group]
         )
 
         # Output VPC details
@@ -466,7 +455,37 @@ class ProcertInfrastructureStack(Stack):
         
         # 5. OPENSEARCH SERVERLESS SETUP
         collection_name = "procert-vector-collection"
-        access_policy_document = [{"Rules": [{"ResourceType": "collection", "Resource": [f"collection/{collection_name}"], "Permission": ["aoss:*"]}, {"ResourceType": "index", "Resource": [f"index/{collection_name}/*"], "Permission": ["aoss:*"]}], "Principal": [f"arn:aws:iam::{self.account}:root", ingestion_lambda.role.role_arn, f"arn:aws:iam::{self.account}:user/Admin1"], "Description": "Data access policy for ProCert"}]
+        
+        # Restrict OpenSearch permissions to only what's needed (principle of least privilege)
+        access_policy_document = [{
+            "Rules": [
+                {
+                    "ResourceType": "collection", 
+                    "Resource": [f"collection/{collection_name}"], 
+                    "Permission": [
+                        "aoss:DescribeCollectionItems",
+                        "aoss:CreateCollectionItems"
+                    ]
+                }, 
+                {
+                    "ResourceType": "index", 
+                    "Resource": [f"index/{collection_name}/*"], 
+                    "Permission": [
+                        "aoss:ReadDocument",
+                        "aoss:WriteDocument", 
+                        "aoss:CreateIndex",
+                        "aoss:DescribeIndex",
+                        "aoss:UpdateIndex"
+                    ]
+                }
+            ], 
+            "Principal": [
+                f"arn:aws:iam::{self.account}:root", 
+                ingestion_lambda.role.role_arn, 
+                f"arn:aws:iam::{self.account}:user/Admin1"
+            ], 
+            "Description": "Least privilege data access policy for ProCert OpenSearch"
+        }]
         access_policy = opensearchserverless.CfnAccessPolicy(self, "ProcertAccessPolicy", name="procert-access-policy", policy=json.dumps(access_policy_document), type="data")
         
         encryption_policy = opensearchserverless.CfnSecurityPolicy(self, "ProcertEncryptionPolicy", name="procert-encryption-policy", type="encryption", policy=json.dumps({"Rules": [{"ResourceType": "collection", "Resource": [f"collection/{collection_name}"]}], "AWSOwnedKey": True}))
@@ -518,8 +537,14 @@ class ProcertInfrastructureStack(Stack):
             actions=["bedrock:InvokeModel"],
             resources=[f"arn:aws:bedrock:{self.region}::foundation-model/amazon.titan-embed-text-v1"]
         ))
+        # Grant specific OpenSearch permissions (principle of least privilege)
         ingestion_lambda.add_to_role_policy(iam.PolicyStatement(
-            actions=["aoss:APIAccessAll"],
+            actions=[
+                "aoss:ReadDocument",
+                "aoss:WriteDocument", 
+                "aoss:CreateIndex",
+                "aoss:DescribeIndex"
+            ],
             resources=[self.vector_collection.attr_arn]
         ))
 
@@ -550,14 +575,27 @@ class ProcertInfrastructureStack(Stack):
             security_groups=[self.lambda_security_group]
         )
         
+        # Grant specific OpenSearch permissions for index setup
         index_setup_lambda.add_to_role_policy(iam.PolicyStatement(
-            actions=["aoss:APIAccessAll"],
+            actions=[
+                "aoss:CreateIndex",
+                "aoss:DescribeIndex",
+                "aoss:UpdateIndex"
+            ],
             resources=[self.vector_collection.attr_arn]
         ))
         
+        # Create log group for the custom resource provider
+        from aws_cdk import aws_logs as logs
+        provider_log_group = logs.LogGroup(self, "ProcertIndexSetupProviderLogGroup",
+            log_group_name=f"/aws/lambda/ProcertInfrastructureStack-ProcertIndexSetupProvider",
+            retention=RetentionDays.ONE_DAY,
+            removal_policy=RemovalPolicy.DESTROY
+        )
+        
         provider = cr.Provider(self, "ProcertIndexSetupProvider",
             on_event_handler=index_setup_lambda,
-            log_retention=RetentionDays.ONE_DAY
+            log_group=provider_log_group
         )
 
         CustomResource(self, "ProcertIndexSetupResource",
@@ -603,8 +641,12 @@ class ProcertInfrastructureStack(Stack):
         )
 
         # 10. PERMISSIONS FOR CHATBOT LAMBDA
+        # Grant specific OpenSearch permissions for search operations
         chatbot_lambda.add_to_role_policy(iam.PolicyStatement(
-            actions=["aoss:APIAccessAll"],
+            actions=[
+                "aoss:ReadDocument",
+                "aoss:DescribeIndex"
+            ],
             resources=[self.vector_collection.attr_arn]
         ))
         
@@ -713,9 +755,12 @@ class ProcertInfrastructureStack(Stack):
         self.user_progress_table.grant_read_write_data(quiz_lambda)
         self.content_metadata_table.grant_read_data(quiz_lambda)
 
-        # Grant OpenSearch permissions to quiz lambda
+        # Grant specific OpenSearch permissions to quiz lambda
         quiz_lambda.add_to_role_policy(iam.PolicyStatement(
-            actions=["aoss:APIAccessAll"],
+            actions=[
+                "aoss:ReadDocument",
+                "aoss:DescribeIndex"
+            ],
             resources=[self.vector_collection.attr_arn]
         ))
 
@@ -806,9 +851,15 @@ class ProcertInfrastructureStack(Stack):
             )
         
         # ML Layer for advanced recommendation algorithms
+        # Make layer ARN configurable instead of hardcoded for better portability
+        ml_layer_arn = self.node.try_get_context("ml_layer_arn")
+        if not ml_layer_arn:
+            # Default to current layer but make it account/region aware
+            ml_layer_arn = f"arn:aws:lambda:{self.region}:{self.account}:layer:procert-ml-dependencies:1"
+        
         ml_layer = lambda_.LayerVersion.from_layer_version_arn(
             self, 'MLLayer', 
-            'arn:aws:lambda:us-east-1:353207798766:layer:procert-ml-dependencies:1'
+            ml_layer_arn
         )
         
         recommendation_lambda = lambda_.Function(self, "ProcertRecommendationLambda",

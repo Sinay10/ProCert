@@ -1,358 +1,344 @@
 #!/usr/bin/env python3
 """
-Final Comprehensive Recommendation Engine Test
+Final Recommendation Engine Test
 
-This script creates a proper test with unique progress records and validates
-the complete recommendation engine functionality.
+Comprehensive test of the recommendation engine with the deployed AWS infrastructure.
 """
 
 import json
 import boto3
 import time
-from datetime import datetime, timedelta
 from decimal import Decimal
-import uuid
+from datetime import datetime, timedelta
 
 # Configuration
+LAMBDA_NAME = "ProcertInfrastructureStac-ProcertRecommendationLam-R6RNNN1QUHys"
 ACCOUNT_ID = "353207798766"
 REGION = "us-east-1"
-TEST_USER_ID = f"final-test-{int(time.time())}"
 
-def create_proper_test_data():
-    """Create proper test data with unique progress records."""
-    print("📝 Creating proper test data with unique progress records...")
+def create_comprehensive_test_data():
+    """Create comprehensive test data for thorough testing."""
+    print("📝 Creating comprehensive test data...")
     
     dynamodb = boto3.resource('dynamodb', region_name=REGION)
+    content_table = dynamodb.Table(f'procert-content-metadata-{ACCOUNT_ID}')
+    progress_table = dynamodb.Table(f'procert-user-progress-{ACCOUNT_ID}')
     
-    try:
-        # Content metadata - multiple pieces of content in same category
-        content_table = dynamodb.Table(f'procert-content-metadata-{ACCOUNT_ID}')
-        
-        content_items = [
-            {
-                'content_id': f'final-ec2-1-{TEST_USER_ID}',
-                'certification_type': 'SAA',
-                'title': 'EC2 Basics',
-                'content_type': 'study_guide',
-                'category': 'EC2',
-                'difficulty_level': 'beginner',
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'version': '1.0',
-                'chunk_count': 5
-            },
-            {
-                'content_id': f'final-ec2-2-{TEST_USER_ID}',
-                'certification_type': 'SAA',
-                'title': 'EC2 Advanced',
-                'content_type': 'study_guide',
-                'category': 'EC2',
-                'difficulty_level': 'intermediate',
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'version': '1.0',
-                'chunk_count': 8
-            },
-            {
-                'content_id': f'final-ec2-3-{TEST_USER_ID}',
-                'certification_type': 'SAA',
-                'title': 'EC2 Expert',
-                'content_type': 'question',
-                'category': 'EC2',
-                'difficulty_level': 'advanced',
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'version': '1.0',
-                'chunk_count': 3
-            },
-            {
-                'content_id': f'final-s3-1-{TEST_USER_ID}',
-                'certification_type': 'SAA',
-                'title': 'S3 Storage',
-                'content_type': 'study_guide',
-                'category': 'S3',
-                'difficulty_level': 'intermediate',
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'version': '1.0',
-                'chunk_count': 6
-            },
-            {
-                'content_id': f'final-vpc-1-{TEST_USER_ID}',
-                'certification_type': 'SAA',
-                'title': 'VPC Networking',
-                'content_type': 'study_guide',
-                'category': 'VPC',
-                'difficulty_level': 'beginner',
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'version': '1.0',
-                'chunk_count': 4
-            }
-        ]
-        
-        for content in content_items:
-            content_table.put_item(Item=content)
-        
-        print(f"   ✅ Created {len(content_items)} content items")
-        
-        # User progress - UNIQUE records for each content item
-        progress_table = dynamodb.Table(f'procert-user-progress-{ACCOUNT_ID}')
-        
-        progress_items = [
-            # EC2 - Multiple content items with poor performance (weak area)
-            {
-                'user_id': TEST_USER_ID,
-                'content_id_certification': f'final-ec2-1-{TEST_USER_ID}#SAA',
-                'content_id': f'final-ec2-1-{TEST_USER_ID}',
-                'certification_type': 'SAA',
-                'progress_type': 'answered',
-                'score': Decimal('25.0'),
-                'time_spent': 600,
-                'timestamp': (datetime.utcnow() - timedelta(days=5)).isoformat()
-            },
-            {
-                'user_id': TEST_USER_ID,
-                'content_id_certification': f'final-ec2-2-{TEST_USER_ID}#SAA',
-                'content_id': f'final-ec2-2-{TEST_USER_ID}',
-                'certification_type': 'SAA',
-                'progress_type': 'answered',
-                'score': Decimal('35.0'),
-                'time_spent': 700,
-                'timestamp': (datetime.utcnow() - timedelta(days=4)).isoformat()
-            },
-            {
-                'user_id': TEST_USER_ID,
-                'content_id_certification': f'final-ec2-3-{TEST_USER_ID}#SAA',
-                'content_id': f'final-ec2-3-{TEST_USER_ID}',
-                'certification_type': 'SAA',
-                'progress_type': 'answered',
-                'score': Decimal('45.0'),
-                'time_spent': 500,
-                'timestamp': (datetime.utcnow() - timedelta(days=3)).isoformat()
-            },
-            # S3 - Excellent performance (strong area)
-            {
-                'user_id': TEST_USER_ID,
-                'content_id_certification': f'final-s3-1-{TEST_USER_ID}#SAA',
-                'content_id': f'final-s3-1-{TEST_USER_ID}',
-                'certification_type': 'SAA',
-                'progress_type': 'answered',
-                'score': Decimal('90.0'),
-                'time_spent': 300,
-                'timestamp': (datetime.utcnow() - timedelta(days=2)).isoformat()
-            },
-            # VPC - Moderate performance (review area)
-            {
-                'user_id': TEST_USER_ID,
-                'content_id_certification': f'final-vpc-1-{TEST_USER_ID}#SAA',
-                'content_id': f'final-vpc-1-{TEST_USER_ID}',
-                'certification_type': 'SAA',
-                'progress_type': 'answered',
-                'score': Decimal('75.0'),
-                'time_spent': 400,
-                'timestamp': (datetime.utcnow() - timedelta(days=1)).isoformat()
-            }
-        ]
-        
-        for progress in progress_items:
-            progress_table.put_item(Item=progress)
-        
-        print(f"   ✅ Created {len(progress_items)} unique progress records")
-        print("   📊 Performance summary:")
-        print("      - EC2: 25%, 35%, 45% (3 attempts, avg 35% - WEAK)")
-        print("      - S3: 90% (1 attempt - STRONG)")
-        print("      - VPC: 75% (1 attempt - MODERATE)")
-        
-        return True
-        
-    except Exception as e:
-        print(f"   ❌ Failed to create test data: {str(e)}")
-        return False
+    test_user_id = f'test-user-final-{int(time.time())}'
+    
+    # Create diverse content metadata
+    content_items = [
+        {
+            'content_id': 'test-ec2-beginner',
+            'certification_type': 'SAA',
+            'title': 'EC2 Fundamentals',
+            'content_type': 'study_guide',
+            'category': 'EC2',
+            'difficulty_level': 'beginner',
+            'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat(),
+            'version': '1.0',
+            'chunk_count': 5
+        },
+        {
+            'content_id': 'test-s3-intermediate',
+            'certification_type': 'SAA',
+            'title': 'S3 Advanced Features',
+            'content_type': 'study_guide',
+            'category': 'S3',
+            'difficulty_level': 'intermediate',
+            'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat(),
+            'version': '1.0',
+            'chunk_count': 8
+        },
+        {
+            'content_id': 'test-vpc-advanced',
+            'certification_type': 'SAA',
+            'title': 'VPC Deep Dive',
+            'content_type': 'study_guide',
+            'category': 'VPC',
+            'difficulty_level': 'advanced',
+            'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat(),
+            'version': '1.0',
+            'chunk_count': 12
+        },
+        {
+            'content_id': 'test-iam-beginner',
+            'certification_type': 'SAA',
+            'title': 'IAM Basics',
+            'content_type': 'study_guide',
+            'category': 'IAM',
+            'difficulty_level': 'beginner',
+            'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat(),
+            'version': '1.0',
+            'chunk_count': 6
+        }
+    ]
+    
+    for item in content_items:
+        content_table.put_item(Item=item)
+    
+    # Create diverse user progress data
+    progress_items = [
+        # Weak performance in EC2 (should trigger weak area recommendations) - Need 3+ attempts
+        {
+            'user_id': test_user_id,
+            'content_id_certification': 'test-ec2-beginner#1#SAA',
+            'content_id': 'test-ec2-beginner',
+            'certification_type': 'SAA',
+            'progress_type': 'answered',
+            'score': Decimal('45.0'),  # Weak
+            'time_spent': 300,
+            'timestamp': (datetime.utcnow() - timedelta(days=1)).isoformat()
+        },
+        {
+            'user_id': test_user_id,
+            'content_id_certification': 'test-ec2-beginner#2#SAA',
+            'content_id': 'test-ec2-beginner',
+            'certification_type': 'SAA',
+            'progress_type': 'answered',
+            'score': Decimal('55.0'),  # Still weak
+            'time_spent': 400,
+            'timestamp': (datetime.utcnow() - timedelta(hours=12)).isoformat()
+        },
+        {
+            'user_id': test_user_id,
+            'content_id_certification': 'test-ec2-beginner#3#SAA',
+            'content_id': 'test-ec2-beginner',
+            'certification_type': 'SAA',
+            'progress_type': 'answered',
+            'score': Decimal('50.0'),  # Still weak
+            'time_spent': 350,
+            'timestamp': (datetime.utcnow() - timedelta(hours=6)).isoformat()
+        },
+        # Strong performance in S3 (should trigger progression recommendations)
+        {
+            'user_id': test_user_id,
+            'content_id_certification': 'test-s3-intermediate#1#SAA',
+            'content_id': 'test-s3-intermediate',
+            'certification_type': 'SAA',
+            'progress_type': 'answered',
+            'score': Decimal('88.0'),  # Strong
+            'time_spent': 450,
+            'timestamp': (datetime.utcnow() - timedelta(days=2)).isoformat()
+        },
+        {
+            'user_id': test_user_id,
+            'content_id_certification': 'test-s3-intermediate#2#SAA',
+            'content_id': 'test-s3-intermediate',
+            'certification_type': 'SAA',
+            'progress_type': 'completed',
+            'score': Decimal('92.0'),  # Very strong
+            'time_spent': 500,
+            'timestamp': (datetime.utcnow() - timedelta(hours=8)).isoformat()
+        },
+        # Moderate performance in IAM (should trigger review recommendations)
+        {
+            'user_id': test_user_id,
+            'content_id_certification': 'test-iam-beginner#1#SAA',
+            'content_id': 'test-iam-beginner',
+            'certification_type': 'SAA',
+            'progress_type': 'answered',
+            'score': Decimal('75.0'),  # Moderate
+            'time_spent': 350,
+            'timestamp': (datetime.utcnow() - timedelta(hours=3)).isoformat()
+        }
+    ]
+    
+    for item in progress_items:
+        progress_table.put_item(Item=item)
+    
+    print(f"   ✅ Created {len(content_items)} content items")
+    print(f"   ✅ Created {len(progress_items)} progress records")
+    print(f"   📊 Test user ID: {test_user_id}")
+    
+    return test_user_id, content_items, progress_items
 
-def test_all_recommendation_endpoints():
-    """Test all recommendation endpoints comprehensively."""
-    print("\n🧪 Testing all recommendation endpoints...")
+def test_recommendation_scenarios(test_user_id):
+    """Test various recommendation scenarios."""
+    print(f"\n🧪 Testing recommendation scenarios for user: {test_user_id}")
     
     lambda_client = boto3.client('lambda', region_name=REGION)
-    lambda_name = "ProcertInfrastructureStac-ProcertRecommendationLam-R6RNNN1QUHys"
     
-    test_cases = [
+    test_scenarios = [
         {
-            'name': 'Get Recommendations',
+            'name': 'Get Personalized Recommendations',
+            'description': 'Should prioritize weak areas (EC2) and progression (S3)',
             'event': {
                 'httpMethod': 'GET',
-                'path': f'/recommendations/{TEST_USER_ID}',
+                'path': f'/recommendations/{test_user_id}',
                 'queryStringParameters': {
                     'certification_type': 'SAA',
-                    'limit': '10'
+                    'limit': '5'
                 }
-            }
+            },
+            'expected_checks': [
+                lambda body: len(body.get('recommendations', [])) > 0,
+                lambda body: body.get('user_id') == test_user_id,
+                lambda body: body.get('certification_type') == 'SAA'
+            ]
         },
         {
-            'name': 'Get Weak Areas',
+            'name': 'Identify Weak Areas',
+            'description': 'Should identify EC2 as a weak area',
             'event': {
                 'httpMethod': 'GET',
-                'path': f'/recommendations/{TEST_USER_ID}/weak-areas',
+                'path': f'/recommendations/{test_user_id}/weak-areas',
                 'queryStringParameters': {
                     'certification_type': 'SAA'
                 }
-            }
+            },
+            'expected_checks': [
+                lambda body: 'weak_categories' in body.get('weak_areas', {}),
+                lambda body: any(cat.get('category') == 'EC2' for cat in body.get('weak_areas', {}).get('weak_categories', [])),
+                lambda body: len(body.get('weak_areas', {}).get('recommendations', [])) > 0
+            ]
         },
         {
-            'name': 'Get Content Progression',
+            'name': 'Content Difficulty Progression',
+            'description': 'Should show progression readiness',
             'event': {
                 'httpMethod': 'GET',
-                'path': f'/recommendations/{TEST_USER_ID}/content-progression',
+                'path': f'/recommendations/{test_user_id}/content-progression',
                 'queryStringParameters': {
                     'certification_type': 'SAA'
                 }
-            }
+            },
+            'expected_checks': [
+                lambda body: 'current_level' in body.get('progression', {}),
+                lambda body: 'recommended_level' in body.get('progression', {}),
+                lambda body: len(body.get('progression', {}).get('progression_path', [])) > 0
+            ]
         },
         {
-            'name': 'Get Study Path',
+            'name': 'Generate Study Path',
+            'description': 'Should create multi-phase study plan',
             'event': {
                 'httpMethod': 'GET',
-                'path': f'/recommendations/{TEST_USER_ID}/study-path',
+                'path': f'/recommendations/{test_user_id}/study-path',
                 'queryStringParameters': {
                     'certification_type': 'SAA'
                 }
-            }
+            },
+            'expected_checks': [
+                lambda body: 'study_phases' in body.get('study_path', {}),
+                lambda body: len(body.get('study_path', {}).get('study_phases', [])) > 0,
+                lambda body: body.get('study_path', {}).get('total_estimated_hours', 0) > 0
+            ]
+        },
+        {
+            'name': 'Record Recommendation Feedback',
+            'description': 'Should successfully record user feedback',
+            'event': {
+                'httpMethod': 'POST',
+                'path': f'/recommendations/{test_user_id}/feedback',
+                'body': json.dumps({
+                    'recommendation_id': f'test-rec-{int(time.time())}',
+                    'action': 'accepted',
+                    'feedback_data': {'rating': 5, 'comment': 'Very helpful!'}
+                })
+            },
+            'expected_checks': [
+                lambda body: body.get('success') is True,
+                lambda body: 'successfully' in body.get('message', '').lower()
+            ]
         }
     ]
     
     results = {}
     
-    for test_case in test_cases:
-        print(f"\n   🔧 Testing: {test_case['name']}")
+    for scenario in test_scenarios:
+        print(f"\n   🎯 {scenario['name']}")
+        print(f"      {scenario['description']}")
         
         try:
             response = lambda_client.invoke(
-                FunctionName=lambda_name,
+                FunctionName=LAMBDA_NAME,
                 InvocationType='RequestResponse',
-                Payload=json.dumps(test_case['event'])
+                Payload=json.dumps(scenario['event'])
             )
             
             result = json.loads(response['Payload'].read())
-            status_code = result.get('statusCode', 'unknown')
             
-            print(f"      Status: {status_code}")
-            
-            if status_code == 200:
-                body = json.loads(result['body'])
+            if result.get('statusCode') == 200:
+                body = json.loads(result.get('body', '{}'))
                 
-                if test_case['name'] == 'Get Recommendations':
-                    recs = body.get('recommendations', [])
-                    print(f"      ✅ Recommendations: {len(recs)}")
-                    
-                    # Categorize recommendations
-                    weak_recs = [r for r in recs if r.get('priority', 0) >= 7]
-                    progression_recs = [r for r in recs if 5 <= r.get('priority', 0) < 7]
-                    review_recs = [r for r in recs if r.get('priority', 0) < 5]
-                    
-                    print(f"         High priority (weak areas): {len(weak_recs)}")
-                    print(f"         Medium priority (progression): {len(progression_recs)}")
-                    print(f"         Low priority (review): {len(review_recs)}")
-                    
-                    for i, rec in enumerate(recs[:5]):  # Show first 5
-                        print(f"         {i+1}. {rec.get('type', 'unknown')} - Priority: {rec.get('priority', 0)}")
-                        print(f"            Reasoning: {rec.get('reasoning', 'No reasoning')[:60]}...")
+                # Run expected checks
+                checks_passed = 0
+                total_checks = len(scenario['expected_checks'])
                 
-                elif test_case['name'] == 'Get Weak Areas':
-                    weak_areas = body.get('weak_areas', {})
-                    weak_cats = weak_areas.get('weak_categories', [])
-                    print(f"      ✅ Weak categories: {len(weak_cats)}")
-                    
-                    for weak_cat in weak_cats:
-                        print(f"         - {weak_cat.get('category', 'unknown')}: {weak_cat.get('avg_score', 0):.1f}% (severity: {weak_cat.get('severity', 'unknown')})")
-                    
-                    category_performance = weak_areas.get('category_performance', {})
-                    print(f"      📊 Category performance: {len(category_performance)} categories")
-                    
-                    for category, perf in category_performance.items():
-                        if isinstance(perf, dict):
-                            avg_score = perf.get('avg_score', 0)
-                            attempts = perf.get('attempts', 0)
-                            print(f"         - {category}: {avg_score:.1f}% ({attempts} attempts)")
+                for i, check in enumerate(scenario['expected_checks']):
+                    try:
+                        if check(body):
+                            checks_passed += 1
+                        else:
+                            print(f"      ❌ Check {i+1} failed")
+                    except Exception as e:
+                        print(f"      ❌ Check {i+1} error: {str(e)}")
                 
-                elif test_case['name'] == 'Get Content Progression':
-                    progression = body.get('progression', {})
-                    print(f"      ✅ Current level: {progression.get('current_level', 'unknown')}")
-                    print(f"         Recommended level: {progression.get('recommended_level', 'unknown')}")
-                    print(f"         Overall readiness: {progression.get('overall_readiness', 0):.2f}")
+                if checks_passed == total_checks:
+                    print(f"      ✅ All checks passed ({checks_passed}/{total_checks})")
+                    results[scenario['name']] = True
+                else:
+                    print(f"      ⚠️  Some checks failed ({checks_passed}/{total_checks})")
+                    results[scenario['name']] = False
                 
-                elif test_case['name'] == 'Get Study Path':
-                    study_path = body.get('study_path', {})
-                    phases = study_path.get('study_phases', [])
-                    print(f"      ✅ Study phases: {len(phases)}")
-                    print(f"         Total hours: {study_path.get('total_estimated_hours', 0)}")
-                    
-                    for phase in phases[:3]:  # Show first 3 phases
-                        print(f"         Phase {phase.get('phase', '?')}: {phase.get('title', 'Unknown')}")
-                        print(f"           Estimated time: {phase.get('estimated_time_hours', 0)} hours")
+                # Print some key results
+                if 'recommendations' in body:
+                    print(f"      📊 Recommendations: {len(body['recommendations'])}")
+                if 'weak_areas' in body and 'weak_categories' in body['weak_areas']:
+                    weak_cats = [cat['category'] for cat in body['weak_areas']['weak_categories']]
+                    print(f"      📊 Weak categories: {weak_cats}")
+                if 'study_path' in body and 'study_phases' in body['study_path']:
+                    phases = len(body['study_path']['study_phases'])
+                    hours = body['study_path'].get('total_estimated_hours', 0)
+                    print(f"      📊 Study path: {phases} phases, {hours} hours")
                 
-                results[test_case['name']] = True
             else:
-                print(f"      ❌ Error: {result.get('body', 'No error details')}")
-                results[test_case['name']] = False
+                print(f"      ❌ HTTP {result.get('statusCode')}")
+                if 'body' in result:
+                    error_body = json.loads(result['body'])
+                    print(f"      Error: {error_body.get('error', {}).get('message', 'Unknown')}")
+                results[scenario['name']] = False
                 
         except Exception as e:
-            print(f"      ❌ Test failed: {str(e)}")
-            results[test_case['name']] = False
+            print(f"      ❌ Exception: {str(e)}")
+            results[scenario['name']] = False
     
     return results
 
-def cleanup_test_data():
+def cleanup_test_data(test_user_id, content_items, progress_items):
     """Clean up all test data."""
-    print("\n🧹 Cleaning up test data...")
+    print(f"\n🧹 Cleaning up test data for user: {test_user_id}")
     
     dynamodb = boto3.resource('dynamodb', region_name=REGION)
+    content_table = dynamodb.Table(f'procert-content-metadata-{ACCOUNT_ID}')
+    progress_table = dynamodb.Table(f'procert-user-progress-{ACCOUNT_ID}')
+    recommendations_table = dynamodb.Table(f'procert-recommendations-{ACCOUNT_ID}')
     
     try:
         # Clean up content
-        content_table = dynamodb.Table(f'procert-content-metadata-{ACCOUNT_ID}')
-        
-        content_ids = [
-            f'final-ec2-1-{TEST_USER_ID}',
-            f'final-ec2-2-{TEST_USER_ID}',
-            f'final-ec2-3-{TEST_USER_ID}',
-            f'final-s3-1-{TEST_USER_ID}',
-            f'final-vpc-1-{TEST_USER_ID}'
-        ]
-        
-        for content_id in content_ids:
-            try:
-                content_table.delete_item(Key={
-                    'content_id': content_id,
-                    'certification_type': 'SAA'
-                })
-            except Exception:
-                pass
+        for item in content_items:
+            content_table.delete_item(Key={
+                'content_id': item['content_id'],
+                'certification_type': item['certification_type']
+            })
         
         # Clean up progress
-        progress_table = dynamodb.Table(f'procert-user-progress-{ACCOUNT_ID}')
+        for item in progress_items:
+            progress_table.delete_item(Key={
+                'user_id': item['user_id'],
+                'content_id_certification': item['content_id_certification']
+            })
         
-        try:
-            response = progress_table.query(
-                KeyConditionExpression='user_id = :user_id',
-                ExpressionAttributeValues={':user_id': TEST_USER_ID}
-            )
-            
-            for item in response['Items']:
-                progress_table.delete_item(Key={
-                    'user_id': item['user_id'],
-                    'content_id_certification': item['content_id_certification']
-                })
-        except Exception:
-            pass
-        
-        # Clean up recommendations
-        recommendations_table = dynamodb.Table(f'procert-recommendations-{ACCOUNT_ID}')
-        
+        # Clean up any recommendations
         try:
             response = recommendations_table.query(
                 KeyConditionExpression='user_id = :user_id',
-                ExpressionAttributeValues={':user_id': TEST_USER_ID}
+                ExpressionAttributeValues={':user_id': test_user_id}
             )
             
             for item in response['Items']:
@@ -361,60 +347,74 @@ def cleanup_test_data():
                     'recommendation_id': item['recommendation_id']
                 })
         except Exception:
-            pass
+            pass  # Recommendations might not exist
         
-        print(f"   ✅ Cleaned up test data for user {TEST_USER_ID}")
+        print(f"   ✅ Cleaned up {len(content_items)} content items")
+        print(f"   ✅ Cleaned up {len(progress_items)} progress records")
+        print("   ✅ Cleaned up recommendations")
+        
+        return True
         
     except Exception as e:
         print(f"   ⚠️  Cleanup failed: {str(e)}")
+        return False
 
 def main():
-    """Run final comprehensive test."""
-    print("🚀 Final Comprehensive Recommendation Engine Test")
-    print("=" * 70)
+    """Run the comprehensive recommendation engine test."""
+    print("🚀 Final Recommendation Engine Test")
+    print("=" * 60)
     
-    # Create proper test data
-    if not create_proper_test_data():
-        print("❌ Failed to create test data, aborting")
-        return
-    
-    # Wait for data consistency
-    print("\n⏳ Waiting for data consistency...")
-    time.sleep(5)
-    
-    # Test all endpoints
-    results = test_all_recommendation_endpoints()
-    
-    # Print final summary
-    print("\n" + "=" * 70)
-    print("📊 FINAL COMPREHENSIVE TEST RESULTS")
-    print("=" * 70)
-    
-    total_tests = len(results)
-    passed_tests = sum(1 for result in results.values() if result)
-    
-    print(f"Test User ID: {TEST_USER_ID}")
-    print(f"Total Tests: {total_tests}")
-    print(f"Passed: {passed_tests}")
-    print(f"Failed: {total_tests - passed_tests}")
-    print(f"Success Rate: {(passed_tests/total_tests)*100:.1f}%")
-    
-    print("\nDetailed Results:")
-    for test_name, result in results.items():
-        status = "✅ PASS" if result else "❌ FAIL"
-        print(f"  {status} {test_name}")
-    
-    if passed_tests == total_tests:
-        print("\n🎉 ALL TESTS PASSED!")
-        print("The Recommendation Engine is fully functional and ready for production!")
-    else:
-        print(f"\n⚠️  {total_tests - passed_tests} test(s) failed.")
-        print("Review the issues above for debugging.")
-    
-    # Cleanup
-    cleanup_test_data()
-    
-    print("=" * 70)
+    try:
+        # Create test data
+        test_user_id, content_items, progress_items = create_comprehensive_test_data()
+        
+        # Wait for data consistency
+        print("\n⏳ Waiting for data consistency...")
+        time.sleep(5)
+        
+        # Run tests
+        results = test_recommendation_scenarios(test_user_id)
+        
+        # Cleanup
+        cleanup_success = cleanup_test_data(test_user_id, content_items, progress_items)
+        
+        # Final report
+        print("\n" + "=" * 60)
+        print("📊 FINAL TEST REPORT")
+        print("=" * 60)
+        
+        total_tests = len(results)
+        passed_tests = sum(1 for result in results.values() if result)
+        
+        print(f"Total Scenarios: {total_tests}")
+        print(f"Passed: {passed_tests}")
+        print(f"Failed: {total_tests - passed_tests}")
+        print(f"Success Rate: {(passed_tests/total_tests)*100:.1f}%")
+        
+        print("\nDetailed Results:")
+        for test_name, result in results.items():
+            status = "✅ PASS" if result else "❌ FAIL"
+            print(f"  {status} {test_name}")
+        
+        if passed_tests == total_tests:
+            print("\n🎉 ALL TESTS PASSED!")
+            print("✅ Recommendation Engine is fully functional and ready for production!")
+            print("✅ ML-based algorithms working correctly")
+            print("✅ Weak area identification accurate")
+            print("✅ Study path generation comprehensive")
+            print("✅ All API endpoints responding correctly")
+        else:
+            print(f"\n⚠️  {total_tests - passed_tests} test(s) failed.")
+            print("Review the detailed results above for specific issues.")
+        
+        print("=" * 60)
+        
+        return passed_tests == total_tests
+        
+    except Exception as e:
+        print(f"\n❌ Test suite failed with error: {str(e)}")
+        return False
 
 if __name__ == "__main__":
-    main()
+    success = main()
+    exit(0 if success else 1)

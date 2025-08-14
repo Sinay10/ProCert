@@ -13,6 +13,7 @@ import requests
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 import uuid
+from decimal import Decimal
 
 # AWS Configuration
 ACCOUNT_ID = "353207798766"
@@ -249,7 +250,7 @@ class RecommendationEngineTestSuite:
                         'content_id': 'test-content-1',
                         'certification_type': TEST_CERTIFICATION,
                         'progress_type': 'answered',
-                        'score': 65.0,  # Weak performance
+                        'score': Decimal('65.0'),  # Weak performance
                         'time_spent': 300,
                         'timestamp': datetime.utcnow().isoformat()
                     },
@@ -259,7 +260,7 @@ class RecommendationEngineTestSuite:
                         'content_id': 'test-content-2',
                         'certification_type': TEST_CERTIFICATION,
                         'progress_type': 'answered',
-                        'score': 85.0,  # Strong performance
+                        'score': Decimal('85.0'),  # Strong performance
                         'time_spent': 450,
                         'timestamp': (datetime.utcnow() - timedelta(days=1)).isoformat()
                     }
@@ -284,7 +285,7 @@ class RecommendationEngineTestSuite:
         print("\n🔧 Testing Lambda function directly...")
         
         try:
-            lambda_name = f"ProcertInfrastructureStack-ProcertRecommendationLambda"
+            lambda_name = f"ProcertInfrastructureStac-ProcertRecommendationLam-R6RNNN1QUHys"
             
             # Test get recommendations
             test_event = {
