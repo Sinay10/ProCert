@@ -49,7 +49,7 @@ lint-python:
 
 validate-cdk:
   stage: validate
-  image: node:18-alpine
+  image: node:20-alpine
   variables:
     # Set CI environment to skip Docker bundling
     CI: "true"

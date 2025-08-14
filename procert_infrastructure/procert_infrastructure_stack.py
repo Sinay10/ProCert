@@ -8,6 +8,7 @@ from aws_cdk import (
     aws_apigateway as apigateway,
     aws_dynamodb as dynamodb,
     aws_cognito as cognito,
+    aws_ec2 as ec2,
     custom_resources as cr
 )
 from aws_cdk.aws_logs import RetentionDays
@@ -17,6 +18,56 @@ import json
 class ProcertInfrastructureStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        # 0. VPC SETUP FOR SECURE OPENSEARCH ACCESS
+        # Create VPC with private subnets for Lambda functions
+        self.vpc = ec2.Vpc(self, "ProcertVpc",
+            vpc_name=f"procert-vpc-{self.account}",
+            max_azs=2,  # Use 2 AZs for high availability
+            nat_gateways=1,  # Single NAT gateway for cost optimization
+            subnet_configuration=[
+                ec2.SubnetConfiguration(
+                    name="Private",
+                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
+                    cidr_mask=24
+                ),
+                ec2.SubnetConfiguration(
+                    name="Public", 
+                    subnet_type=ec2.SubnetType.PUBLIC,
+                    cidr_mask=24
+                )
+            ]
+        )
+
+        # Security group for Lambda functions accessing OpenSearch
+        self.lambda_security_group = ec2.SecurityGroup(self, "LambdaSecurityGroup",
+            vpc=self.vpc,
+            description="Security group for Lambda functions accessing OpenSearch Serverless",
+            allow_all_outbound=True
+        )
+
+        # VPC Endpoint for OpenSearch Serverless
+        self.opensearch_vpc_endpoint = ec2.VpcEndpoint(self, "OpenSearchVpcEndpoint",
+            vpc=self.vpc,
+            service=ec2.VpcEndpointService(f"com.amazonaws.{self.region}.aoss", 443),
+            vpc_endpoint_type=ec2.VpcEndpointType.INTERFACE,
+            subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
+            security_groups=[self.lambda_security_group],
+            policy_document=iam.PolicyDocument(
+                statements=[
+                    iam.PolicyStatement(
+                        effect=iam.Effect.ALLOW,
+                        principals=[iam.AnyPrincipal()],
+                        actions=["aoss:*"],
+                        resources=["*"]
+                    )
+                ]
+            )
+        )
+
+        # Output VPC details
+        CfnOutput(self, "VpcId", value=self.vpc.vpc_id)
+        CfnOutput(self, "OpenSearchVpcEndpointId", value=self.opensearch_vpc_endpoint.vpc_endpoint_id)
 
         # 1. INGESTION LAMBDA FUNCTION
         # Check if we're in CI/CD environment to skip Docker bundling
@@ -45,7 +96,10 @@ class ProcertInfrastructureStack(Stack):
             handler="main.handler",
             code=lambda_code,
             timeout=Duration.seconds(300),
-            memory_size=512
+            memory_size=512,
+            vpc=self.vpc,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
+            security_groups=[self.lambda_security_group]
         )
 
         # 2. CERTIFICATION-AWARE S3 BUCKETS - Complete set for all AWS certifications
@@ -417,7 +471,19 @@ class ProcertInfrastructureStack(Stack):
         
         encryption_policy = opensearchserverless.CfnSecurityPolicy(self, "ProcertEncryptionPolicy", name="procert-encryption-policy", type="encryption", policy=json.dumps({"Rules": [{"ResourceType": "collection", "Resource": [f"collection/{collection_name}"]}], "AWSOwnedKey": True}))
         
-        network_policy = opensearchserverless.CfnSecurityPolicy(self, "ProcertNetworkPolicy", name="procert-network-policy", type="network", policy=json.dumps([{"Rules": [{"ResourceType": "collection", "Resource": [f"collection/{collection_name}"]}, {"ResourceType": "dashboard", "Resource": [f"collection/{collection_name}"]}], "AllowFromPublic": True}]))
+        # Secure network policy - VPC access only
+        network_policy = opensearchserverless.CfnSecurityPolicy(self, "ProcertNetworkPolicy", 
+            name="procert-network-policy", 
+            type="network", 
+            policy=json.dumps([{
+                "Rules": [
+                    {"ResourceType": "collection", "Resource": [f"collection/{collection_name}"]}, 
+                    {"ResourceType": "dashboard", "Resource": [f"collection/{collection_name}"]}
+                ], 
+                "AllowFromPublic": False,
+                "SourceVPCEs": [self.opensearch_vpc_endpoint.vpc_endpoint_id]
+            }])
+        )
         
         self.vector_collection = opensearchserverless.CfnCollection(self, "VectorCollection", name=collection_name, type="VECTORSEARCH")
         self.vector_collection.add_dependency(access_policy)
@@ -478,7 +544,10 @@ class ProcertInfrastructureStack(Stack):
             handler="main.handler",
             code=index_lambda_code,
             timeout=Duration.seconds(120),
-            memory_size=256
+            memory_size=256,
+            vpc=self.vpc,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
+            security_groups=[self.lambda_security_group]
         )
         
         index_setup_lambda.add_to_role_policy(iam.PolicyStatement(
@@ -521,6 +590,9 @@ class ProcertInfrastructureStack(Stack):
             code=chatbot_lambda_code,
             timeout=Duration.seconds(25),  # Reduced to stay under API Gateway 30s limit
             memory_size=1024,  # Increased memory for conversation management
+            vpc=self.vpc,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
+            security_groups=[self.lambda_security_group],
             environment={
                 "OPENSEARCH_ENDPOINT": self.vector_collection.attr_collection_endpoint,
                 "OPENSEARCH_INDEX": collection_name,
