@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { API_ENDPOINTS } from '@/lib/api-client'
 
 function SignInFormContent() {
   const [isLoading, setIsLoading] = useState(false)
@@ -63,11 +64,12 @@ function SignInFormContent() {
       console.log('Attempting registration with:', { email, name })
       console.log('API URL:', process.env.NEXT_PUBLIC_API_BASE_URL)
 
-      // Register user with your API
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/register`, {
+      // Register user with your API using fetch (since it works)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}${API_ENDPOINTS.AUTH_REGISTER}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         body: JSON.stringify({
           email,
@@ -180,6 +182,34 @@ function SignInFormContent() {
                 {isRegistering ? 'Sign In' : 'Create an account'}
               </button>
             </p>
+            
+            {/* Temporary test button */}
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={async () => {
+                  console.log('Testing registration with API client...')
+                  try {
+                    const { apiClient } = await import('@/lib/api-client')
+                    const testUser = {
+                      email: `test-${Date.now()}@example.com`,
+                      password: 'TestPass123!',
+                      name: 'API Test User'
+                    }
+                    console.log('Making API call to:', API_ENDPOINTS.AUTH_REGISTER)
+                    const result = await apiClient.post(API_ENDPOINTS.AUTH_REGISTER, testUser)
+                    console.log('✅ API Client registration success:', result)
+                    setError('✅ API Client test successful! Registration works with axios fallback.')
+                  } catch (error: any) {
+                    console.error('❌ API Client registration failed:', error)
+                    setError(`❌ API Client test failed: ${error.message}`)
+                  }
+                }}
+                className="text-xs text-secondary-500 hover:text-secondary-700"
+              >
+                🔧 Test API Client Registration
+              </button>
+            </div>
           </div>
         </form>
       </CardContent>

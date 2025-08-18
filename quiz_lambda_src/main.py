@@ -30,7 +30,7 @@ USER_PROGRESS_TABLE = os.environ.get('USER_PROGRESS_TABLE')
 CONTENT_METADATA_TABLE = os.environ.get('CONTENT_METADATA_TABLE')
 OPENSEARCH_ENDPOINT = os.environ.get('OPENSEARCH_ENDPOINT')
 OPENSEARCH_INDEX = os.environ.get('OPENSEARCH_INDEX')
-AWS_REGION = os.environ.get('AWS_REGION')
+OPENSEARCH_REGION = os.environ.get('OPENSEARCH_REGION') or os.environ.get('AWS_REGION')
 
 # Initialize DynamoDB tables
 quiz_sessions_table = dynamodb.Table(QUIZ_SESSIONS_TABLE) if QUIZ_SESSIONS_TABLE else None
@@ -41,7 +41,7 @@ content_metadata_table = dynamodb.Table(CONTENT_METADATA_TABLE) if CONTENT_METAD
 if OPENSEARCH_ENDPOINT:
     host = OPENSEARCH_ENDPOINT.replace("https://", "")
     credentials = boto3.Session().get_credentials()
-    auth = AWSV4SignerAuth(credentials, AWS_REGION, 'aoss')
+    auth = AWSV4SignerAuth(credentials, OPENSEARCH_REGION, 'aoss')
     opensearch_client = OpenSearch(
         hosts=[{'host': host, 'port': 443}],
         http_auth=auth,
@@ -417,6 +417,222 @@ def select_adaptive_questions(questions: List[Dict[str, Any]], user_performance:
         return random.sample(questions, min(count, len(questions)))
 
 
+def generate_sample_questions(certification_type: str, count: int) -> List[Dict[str, Any]]:
+    """
+    Generate sample quiz questions when Bedrock is unavailable.
+    
+    Args:
+        certification_type: AWS certification type
+        count: Number of questions to generate
+        
+    Returns:
+        List of sample questions
+    """
+    # Sample questions for different certification types
+    sample_questions = {
+        'SAA': [
+            {
+                "question_text": "Which AWS service provides a managed NoSQL database?",
+                "answer_options": ["A) Amazon RDS", "B) Amazon DynamoDB", "C) Amazon Redshift", "D) Amazon Aurora"],
+                "correct_answer": "B",
+                "category": "Database",
+                "difficulty": "intermediate"
+            },
+            {
+                "question_text": "What is the maximum size of an S3 object?",
+                "answer_options": ["A) 5 GB", "B) 5 TB", "C) 500 GB", "D) 50 TB"],
+                "correct_answer": "B",
+                "category": "Storage",
+                "difficulty": "basic"
+            },
+            {
+                "question_text": "Which service allows you to run code without provisioning servers?",
+                "answer_options": ["A) Amazon EC2", "B) AWS Lambda", "C) Amazon ECS", "D) AWS Batch"],
+                "correct_answer": "B",
+                "category": "Compute",
+                "difficulty": "basic"
+            }
+        ],
+        'ANS': [
+            {
+                "question_text": "Which AWS service provides DNS resolution?",
+                "answer_options": ["A) Amazon Route 53", "B) AWS Direct Connect", "C) Amazon VPC", "D) AWS CloudFront"],
+                "correct_answer": "A",
+                "category": "Networking",
+                "difficulty": "basic"
+            },
+            {
+                "question_text": "What is the purpose of a NAT Gateway?",
+                "answer_options": ["A) Load balancing", "B) DNS resolution", "C) Outbound internet access for private subnets", "D) VPN connectivity"],
+                "correct_answer": "C",
+                "category": "VPC",
+                "difficulty": "intermediate"
+            }
+        ],
+        'DVA': [
+            {
+                "question_text": "Which AWS service is used for application monitoring?",
+                "answer_options": ["A) Amazon CloudWatch", "B) AWS CloudTrail", "C) AWS Config", "D) Amazon Inspector"],
+                "correct_answer": "A",
+                "category": "Monitoring",
+                "difficulty": "basic"
+            }
+        ],
+        'CCP': [
+            {
+                "question_text": "What is the AWS shared responsibility model?",
+                "answer_options": ["A) AWS manages everything", "B) Customer manages everything", "C) Shared security responsibilities", "D) No security responsibilities"],
+                "correct_answer": "C",
+                "category": "Security",
+                "difficulty": "basic"
+            }
+        ]
+    }
+    
+    # Get questions for the certification type, or use SAA as default
+    questions = sample_questions.get(certification_type, sample_questions['SAA'])
+    
+    # Format questions to match expected structure
+    formatted_questions = []
+    for i, q in enumerate(questions[:count]):
+        formatted_question = {
+            "content_id": f"sample-{certification_type.lower()}-{i}",
+            "question_text": q["question_text"],
+            "answer_options": q["answer_options"],
+            "correct_answer": q["correct_answer"],
+            "question_type": "multiple_choice",
+            "certification_type": certification_type,
+            "category": q["category"],
+            "difficulty": q["difficulty"],
+            "explanation": f"Sample question for {certification_type} certification"
+        }
+        formatted_questions.append(formatted_question)
+    
+    # If we need more questions than available samples, repeat them with variations
+    while len(formatted_questions) < count:
+        base_question = questions[len(formatted_questions) % len(questions)]
+        formatted_question = {
+            "content_id": f"sample-{certification_type.lower()}-{len(formatted_questions)}",
+            "question_text": f"[Variation] {base_question['question_text']}",
+            "answer_options": base_question["answer_options"],
+            "correct_answer": base_question["correct_answer"],
+            "question_type": "multiple_choice",
+            "certification_type": certification_type,
+            "category": base_question["category"],
+            "difficulty": base_question["difficulty"],
+            "explanation": f"Sample question variation for {certification_type} certification"
+        }
+        formatted_questions.append(formatted_question)
+    
+    logger.info(f"Generated {len(formatted_questions)} sample questions for {certification_type}")
+    return formatted_questions
+
+
+def generate_questions_with_bedrock(certification_type: str, count: int) -> List[Dict[str, Any]]:
+    """
+    Generate quiz questions using Bedrock when OpenSearch is unavailable.
+    
+    Args:
+        certification_type: AWS certification type (e.g., 'SAA', 'ANS')
+        count: Number of questions to generate
+        
+    Returns:
+        List of generated questions
+    """
+    try:
+        # Map certification codes to full names
+        cert_names = {
+            'SAA': 'AWS Certified Solutions Architect Associate',
+            'DVA': 'AWS Certified Developer Associate', 
+            'SOA': 'AWS Certified SysOps Administrator Associate',
+            'ANS': 'AWS Certified Advanced Networking Specialty',
+            'CCP': 'AWS Certified Cloud Practitioner',
+            'SAP': 'AWS Certified Solutions Architect Professional',
+            'DOP': 'AWS Certified DevOps Engineer Professional'
+        }
+        
+        cert_name = cert_names.get(certification_type, f'AWS {certification_type} Certification')
+        
+        prompt = f"""Generate {count} multiple choice questions for the {cert_name} exam.
+
+Each question should:
+- Be realistic and exam-appropriate
+- Have 4 answer options (A, B, C, D)
+- Include the correct answer
+- Cover different AWS services and concepts
+- Be at an appropriate difficulty level
+
+Format each question as JSON with this structure:
+{{
+    "question_text": "Question text here",
+    "answer_options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"],
+    "correct_answer": "A",
+    "category": "service_category",
+    "difficulty": "intermediate"
+}}
+
+Return only a JSON array of questions, no other text."""
+
+        response = bedrock_runtime.invoke_model(
+            modelId="anthropic.claude-3-5-sonnet-20240620-v1:0",
+            body=json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 4000,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+            })
+        )
+        
+        response_body = json.loads(response['body'].read())
+        generated_text = response_body['content'][0]['text']
+        
+        # Parse the JSON response
+        try:
+            questions_data = json.loads(generated_text)
+            if not isinstance(questions_data, list):
+                questions_data = [questions_data]
+        except json.JSONDecodeError:
+            # If JSON parsing fails, try to extract JSON from the text
+            import re
+            json_match = re.search(r'\[.*\]', generated_text, re.DOTALL)
+            if json_match:
+                questions_data = json.loads(json_match.group())
+            else:
+                logger.error("Failed to parse Bedrock response as JSON")
+                return []
+        
+        # Format questions to match expected structure
+        formatted_questions = []
+        for i, q in enumerate(questions_data[:count]):
+            formatted_question = {
+                "content_id": f"bedrock-{certification_type.lower()}-{i}",
+                "question_text": q.get("question_text", ""),
+                "answer_options": q.get("answer_options", []),
+                "correct_answer": q.get("correct_answer", "A"),
+                "question_type": "multiple_choice",
+                "certification_type": certification_type,
+                "category": q.get("category", "generated"),
+                "difficulty": q.get("difficulty", "intermediate"),
+                "explanation": f"Generated question for {cert_name}"
+            }
+            formatted_questions.append(formatted_question)
+        
+        logger.info(f"Generated {len(formatted_questions)} questions using Bedrock for {certification_type}")
+        return formatted_questions
+        
+    except Exception as e:
+        logger.error(f"Error generating questions with Bedrock: {str(e)}")
+        # If Bedrock is throttled, return sample questions as fallback
+        if "ThrottlingException" in str(e) or "Too many requests" in str(e):
+            logger.info(f"Bedrock throttled, using sample questions for {certification_type}")
+            return generate_sample_questions(certification_type, count)
+        return []
+
+
 def create_quiz_session(user_id: str, certification_type: str, question_count: int, 
                        difficulty: str = "mixed") -> Dict[str, Any]:
     """
@@ -444,6 +660,11 @@ def create_quiz_session(user_id: str, certification_type: str, question_count: i
         # Search for available questions
         available_questions = search_questions_by_certification(certification_type, limit=200)
         
+        if not available_questions:
+            logger.warning(f"No questions found in OpenSearch for {certification_type}, falling back to Bedrock generation")
+            # Fallback to Bedrock-generated questions
+            available_questions = generate_questions_with_bedrock(certification_type, question_count * 2)
+            
         if not available_questions:
             raise ValueError(f"No questions found for certification type: {certification_type}")
         
@@ -806,10 +1027,7 @@ def handle_submit_quiz(request_body: Dict[str, Any]) -> Dict[str, Any]:
         # Submit quiz
         results = submit_quiz_answers(quiz_id, answers)
         
-        return create_response(200, {
-            'message': 'Quiz submitted successfully',
-            'results': results
-        })
+        return create_response(200, results)
         
     except ValueError as e:
         return create_response(400, {'error': str(e)})

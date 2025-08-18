@@ -81,11 +81,14 @@ def invoke_bedrock_with_retry(body: str, model_id: str, max_retries: int = 2) ->
 
 def get_embedding(text: str) -> Optional[List[float]]:
     """Generates an embedding for a text query with retry logic."""
+    print(f"Generating embedding for text: {text[:100]}...")
     body = json.dumps({"inputText": text})
     response_body = invoke_bedrock_with_retry(body, "amazon.titan-embed-text-v1", max_retries=2)
     
     if response_body:
-        return response_body.get("embedding")
+        embedding = response_body.get("embedding")
+        print(f"Embedding generated successfully: {len(embedding) if embedding else 0} dimensions")
+        return embedding
     else:
         print("Failed to get embedding after retries, returning None")
         return None
@@ -93,40 +96,61 @@ def get_embedding(text: str) -> Optional[List[float]]:
 def search_opensearch(query_embedding: List[float], certification_type: Optional[str] = None, 
                      size: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
     """Searches OpenSearch for relevant document chunks with optional filtering."""
-    query = {
-        "size": size,
-        "query": {
-            "bool": {
-                "must": [
-                    {
-                        "knn": {
-                            "vector_field": {
-                                "vector": query_embedding,
-                                "k": size
+    # Build the base knn query
+    if certification_type:
+        # Use hybrid query with knn and filter
+        query = {
+            "size": size,
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "knn": {
+                                "vector_field": {
+                                    "vector": query_embedding,
+                                    "k": size * 2  # Get more results to account for filtering
+                                }
                             }
                         }
-                    }
-                ]
+                    ],
+                    "filter": [
+                        {"term": {"certification_type": certification_type}}
+                    ]
+                }
             }
         }
-    }
-    
-    # Add certification type filter if specified
-    if certification_type:
-        query["query"]["bool"]["filter"] = [
-            {"term": {"certification_type": certification_type}}
-        ]
+    else:
+        # Simple knn query without filter
+        query = {
+            "size": size,
+            "query": {
+                "knn": {
+                    "vector_field": {
+                        "vector": query_embedding,
+                        "k": size
+                    }
+                }
+            }
+        }
     
     try:
+        print(f"Executing OpenSearch query with size={size}, certification_type={certification_type}")
+        print(f"Query structure: {json.dumps(query, indent=2)}")
+        
         response = opensearch_client.search(body=query, index=opensearch_index)
+        
+        print(f"OpenSearch response: {response['hits']['total']['value']} total hits, {len(response['hits']['hits'])} returned")
         
         # Build structured context with metadata
         context_parts = []
         for hit in response["hits"]["hits"]:
             source = hit["_source"]
+            score = hit["_score"]
+            print(f"Hit score: {score}, cert: {source.get('certification_type', 'unknown')}")
+            
             context_parts.append({
                 "text": source["text"],
-                "score": hit["_score"],
+                "score": score,
                 "content_id": source.get("content_id", "unknown"),
                 "certification_type": source.get("certification_type", "general"),
                 "category": source.get("category", ""),
@@ -135,6 +159,7 @@ def search_opensearch(query_embedding: List[float], certification_type: Optional
             
         # Concatenate text for the LLM
         context = "\n\n".join([part["text"] for part in context_parts])
+        print(f"Returning {len(context_parts)} context parts, total context length: {len(context)}")
         return context, context_parts
     
     except Exception as e:
@@ -245,7 +270,7 @@ def determine_response_mode(question: str, context: str, context_parts: List[Dic
     
     # Check if we have high-quality, relevant context
     avg_score = sum(part["score"] for part in context_parts) / len(context_parts)
-    if avg_score < 0.7:  # Low relevance scores
+    if avg_score > 0.01:  # For L2 distance, lower scores are better (inverted logic)
         return "enhanced"
     
     return "rag"  # Default to RAG-only for good context

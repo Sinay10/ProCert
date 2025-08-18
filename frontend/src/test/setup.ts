@@ -24,6 +24,7 @@ vi.mock('next-auth/react', () => ({
         name: 'Test User',
       },
       accessToken: 'mock-token',
+      userId: 'test-user-id',
     },
     status: 'authenticated',
   }),

@@ -1,4 +1,5 @@
 import { Metadata } from 'next'
+import { ChatInterface } from '@/components/chat/chat-interface'
 
 export const metadata: Metadata = {
   title: 'AI Chat - ProCert Learning Platform',
@@ -7,18 +8,18 @@ export const metadata: Metadata = {
 
 export default function ChatPage() {
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-6xl mx-auto h-full">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-secondary-900">AI Chat Assistant</h1>
         <p className="text-secondary-600 mt-2">
-          Get personalized help with your AWS certification studies
+          Get personalized help with your AWS certification studies. Choose between curated study materials or enhanced responses with additional context.
         </p>
       </div>
       
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <p className="text-secondary-500 text-center">
-          Chat interface will be implemented in task 8
-        </p>
+
+      
+      <div className="h-[calc(100vh-400px)]">
+        <ChatInterface className="h-full" />
       </div>
     </div>
   )

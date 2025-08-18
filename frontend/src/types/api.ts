@@ -50,9 +50,9 @@ export interface QuizResponse {
   quiz_id: string
   questions: QuizQuestion[]
   metadata: {
-    certification: string
+    certification_type: string
     difficulty: string
-    estimated_time: number
+    count: number
   }
 }
 
@@ -63,18 +63,27 @@ export interface QuizSubmission {
 }
 
 export interface QuizResult {
+  quiz_id: string
   score: number
+  correct_answers: number
+  total_questions: number
+  percentage: number
   results: Array<{
     question_id: string
-    correct: boolean
+    question_text: string
+    options: string[]
     user_answer: string
     correct_answer: string
-  }>
-  feedback: Array<{
-    question_id: string
+    is_correct: boolean
     explanation: string
-    additional_resources?: string[]
+    category: string
   }>
+  completed_at: string
+  performance_summary: {
+    passed: boolean
+    grade: string
+    time_taken: string
+  }
 }
 
 // Recommendation types

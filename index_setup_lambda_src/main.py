@@ -45,7 +45,7 @@ def handler(event, context):
                             'dimension': 1536, # Dimension for Titan Embeddings
                             'method': {
                                 'name': 'hnsw',
-                                'space_type': 'l2',
+                                'space_type': 'cosinesimil',  # Use cosine similarity instead of L2
                                 'engine': 'nmslib'
                             }
                         },

@@ -703,7 +703,8 @@ class ProcertInfrastructureStack(Stack):
                 "USER_PROGRESS_TABLE": self.user_progress_table.table_name,
                 "CONTENT_METADATA_TABLE": self.content_metadata_table.table_name,
                 "OPENSEARCH_ENDPOINT": self.vector_collection.attr_collection_endpoint,
-                "OPENSEARCH_INDEX": collection_name
+                "OPENSEARCH_INDEX": collection_name,
+                "OPENSEARCH_REGION": self.region
             }
         )
 
@@ -885,7 +886,7 @@ class ProcertInfrastructureStack(Stack):
             rest_api_name="ProCert Learning Platform API",
             description="Enhanced API for ProCert Learning Platform with validation and comprehensive CORS support.",
             default_cors_preflight_options=apigateway.CorsOptions(
-                allow_origins=["http://localhost:3000", "https://*.procert.app", "https://procert.app"],
+                allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "https://*.procert.app", "https://procert.app"],
                 allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
                 allow_headers=[
                     "Content-Type", 
@@ -1112,6 +1113,53 @@ class ProcertInfrastructureStack(Stack):
         # Maintain backward compatibility
         query_resource = api.root.add_resource("query")
         query_resource.add_method("POST", chat_integration)
+
+        # CREATE OPENSEARCH SERVERLESS ACCESS POLICY
+        # This grants the Lambda functions access to the OpenSearch collection
+        collection_name = "procert-vector-collection"
+        lambda_roles = [
+            ingestion_lambda.role.role_arn,
+            chatbot_lambda.role.role_arn,
+            quiz_lambda.role.role_arn,
+            progress_lambda.role.role_arn,
+            recommendation_lambda.role.role_arn,
+            index_setup_lambda.role.role_arn
+        ]
+        
+        access_policy = opensearchserverless.CfnAccessPolicy(self, "ProcertDataAccessPolicy",
+            name="procert-data-access-policy",
+            type="data",
+            policy=json.dumps([{
+                "Rules": [
+                    {
+                        "ResourceType": "collection",
+                        "Resource": [f"collection/{collection_name}"],
+                        "Permission": [
+                            "aoss:CreateCollectionItems",
+                            "aoss:DeleteCollectionItems", 
+                            "aoss:UpdateCollectionItems",
+                            "aoss:DescribeCollectionItems"
+                        ]
+                    },
+                    {
+                        "ResourceType": "index",
+                        "Resource": [f"index/{collection_name}/*"],
+                        "Permission": [
+                            "aoss:CreateIndex",
+                            "aoss:DeleteIndex",
+                            "aoss:UpdateIndex",
+                            "aoss:DescribeIndex",
+                            "aoss:ReadDocument",
+                            "aoss:WriteDocument"
+                        ]
+                    }
+                ],
+                "Principal": lambda_roles
+            }])
+        )
+        
+        # Add dependency so access policy is created before collection
+        self.vector_collection.add_dependency(access_policy)
 
         CfnOutput(self, "ApiEndpoint", value=api.url)
         CfnOutput(self, "ProgressLambdaArn", value=progress_lambda.function_arn)
