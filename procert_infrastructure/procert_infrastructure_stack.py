@@ -897,7 +897,8 @@ class ProcertInfrastructureStack(Stack):
                     "X-Requested-With",
                     "Accept",
                     "Origin",
-                    "Referer"
+                    "Referer",
+                    "X-Request-Time"
                 ],
                 expose_headers=["X-Request-Id", "X-Rate-Limit-Remaining"],
                 allow_credentials=True,
@@ -994,12 +995,11 @@ class ProcertInfrastructureStack(Stack):
             )
         )
 
-        # Create JWT authorizer
-        jwt_authorizer = apigateway.TokenAuthorizer(self, "JWTAuthorizer",
-            handler=jwt_authorizer_lambda,
-            identity_source="method.request.header.Authorization",
-            authorizer_name="ProcertJWTAuthorizer",
-            results_cache_ttl=Duration.minutes(5)
+        # EMERGENCY FIX: Replace problematic JWT authorizer with reliable Cognito authorizer
+        cognito_authorizer = apigateway.CognitoUserPoolsAuthorizer(self, "CognitoAuthorizer",
+            cognito_user_pools=[self.user_pool],
+            authorizer_name="ProcertCognitoAuthorizer",
+            results_cache_ttl=Duration.seconds(0)  # No caching to prevent issues
         )
 
         # Chat endpoints (protected)
@@ -1008,15 +1008,20 @@ class ProcertInfrastructureStack(Stack):
         
         # POST /chat/message - Send message (protected)
         message_resource = chat_resource.add_resource("message")
-        message_resource.add_method("POST", chat_integration, authorizer=jwt_authorizer)
+        message_resource.add_method("POST", chat_integration, authorizer=cognito_authorizer)
         
         # GET /chat/conversation/{id} - Get conversation (protected)
         conversation_resource = chat_resource.add_resource("conversation")
         conversation_id_resource = conversation_resource.add_resource("{id}")
-        conversation_id_resource.add_method("GET", chat_integration, authorizer=jwt_authorizer)
+        conversation_id_resource.add_method("GET", chat_integration, authorizer=cognito_authorizer)
         
         # DELETE /chat/conversation/{id} - Delete conversation (protected)
-        conversation_id_resource.add_method("DELETE", chat_integration, authorizer=jwt_authorizer)
+        conversation_id_resource.add_method("DELETE", chat_integration, authorizer=cognito_authorizer)
+        
+        # Resources endpoints (protected) - using same chatbot lambda for S3 listing
+        resources_resource = api.root.add_resource("resources")
+        resources_certification_resource = resources_resource.add_resource("{certification}")
+        resources_certification_resource.add_method("GET", chat_integration, authorizer=cognito_authorizer)
 
         # User authentication and profile endpoints
         user_profile_integration = apigateway.LambdaIntegration(user_profile_lambda)
@@ -1031,9 +1036,9 @@ class ProcertInfrastructureStack(Stack):
         # Profile management endpoints (protected)
         profile_resource = api.root.add_resource("profile")
         profile_user_resource = profile_resource.add_resource("{user_id}")
-        profile_user_resource.add_method("GET", user_profile_integration, authorizer=jwt_authorizer)
-        profile_user_resource.add_method("PUT", user_profile_integration, authorizer=jwt_authorizer)
-        profile_user_resource.add_method("DELETE", user_profile_integration, authorizer=jwt_authorizer)
+        profile_user_resource.add_method("GET", user_profile_integration, authorizer=cognito_authorizer)
+        profile_user_resource.add_method("PUT", user_profile_integration, authorizer=cognito_authorizer)
+        profile_user_resource.add_method("DELETE", user_profile_integration, authorizer=cognito_authorizer)
 
         # Quiz endpoints (protected) - simplified integration like profile endpoints
         quiz_integration = apigateway.LambdaIntegration(quiz_lambda)
@@ -1042,20 +1047,20 @@ class ProcertInfrastructureStack(Stack):
         
         # POST /quiz/generate - Generate new quiz (protected)
         quiz_generate_resource = quiz_resource.add_resource("generate")
-        quiz_generate_resource.add_method("POST", quiz_integration, authorizer=jwt_authorizer)
+        quiz_generate_resource.add_method("POST", quiz_integration, authorizer=cognito_authorizer)
         
         # POST /quiz/submit - Submit quiz answers (protected)
         quiz_submit_resource = quiz_resource.add_resource("submit")
-        quiz_submit_resource.add_method("POST", quiz_integration, authorizer=jwt_authorizer)
+        quiz_submit_resource.add_method("POST", quiz_integration, authorizer=cognito_authorizer)
         
         # GET /quiz/history/{user_id} - Get quiz history (protected)
         quiz_history_resource = quiz_resource.add_resource("history")
         quiz_history_user_resource = quiz_history_resource.add_resource("{user_id}")
-        quiz_history_user_resource.add_method("GET", quiz_integration, authorizer=jwt_authorizer)
+        quiz_history_user_resource.add_method("GET", quiz_integration, authorizer=cognito_authorizer)
         
         # GET /quiz/{quiz_id} - Get quiz details (protected)
         quiz_id_resource = quiz_resource.add_resource("{quiz_id}")
-        quiz_id_resource.add_method("GET", quiz_integration, authorizer=jwt_authorizer)
+        quiz_id_resource.add_method("GET", quiz_integration, authorizer=cognito_authorizer)
 
         # Progress tracking endpoints (protected)
         progress_integration = apigateway.LambdaIntegration(progress_lambda)
@@ -1064,27 +1069,27 @@ class ProcertInfrastructureStack(Stack):
 
         # POST /progress/{user_id}/interaction - Record interaction (protected)
         interaction_resource = progress_user_resource.add_resource("interaction")
-        interaction_resource.add_method("POST", progress_integration, authorizer=jwt_authorizer)
+        interaction_resource.add_method("POST", progress_integration, authorizer=cognito_authorizer)
 
         # GET /progress/{user_id}/analytics - Get performance analytics (protected)
         analytics_resource = progress_user_resource.add_resource("analytics")
-        analytics_resource.add_method("GET", progress_integration, authorizer=jwt_authorizer)
+        analytics_resource.add_method("GET", progress_integration, authorizer=cognito_authorizer)
 
         # GET /progress/{user_id}/trends - Get performance trends (protected)
         trends_resource = progress_user_resource.add_resource("trends")
-        trends_resource.add_method("GET", progress_integration, authorizer=jwt_authorizer)
+        trends_resource.add_method("GET", progress_integration, authorizer=cognito_authorizer)
 
         # GET /progress/{user_id}/readiness - Get certification readiness (protected)
         readiness_resource = progress_user_resource.add_resource("readiness")
-        readiness_resource.add_method("GET", progress_integration, authorizer=jwt_authorizer)
+        readiness_resource.add_method("GET", progress_integration, authorizer=cognito_authorizer)
 
         # GET /progress/{user_id}/achievements - Get user achievements (protected)
         achievements_resource = progress_user_resource.add_resource("achievements")
-        achievements_resource.add_method("GET", progress_integration, authorizer=jwt_authorizer)
+        achievements_resource.add_method("GET", progress_integration, authorizer=cognito_authorizer)
 
         # GET /progress/{user_id}/dashboard - Get comprehensive dashboard data (protected)
         dashboard_resource = progress_user_resource.add_resource("dashboard")
-        dashboard_resource.add_method("GET", progress_integration, authorizer=jwt_authorizer)
+        dashboard_resource.add_method("GET", progress_integration, authorizer=cognito_authorizer)
 
         # Recommendation endpoints (protected)
         recommendation_integration = apigateway.LambdaIntegration(recommendation_lambda)
@@ -1092,23 +1097,23 @@ class ProcertInfrastructureStack(Stack):
         recommendations_user_resource = recommendations_resource.add_resource("{user_id}")
 
         # GET /recommendations/{user_id} - Get personalized recommendations (protected)
-        recommendations_user_resource.add_method("GET", recommendation_integration, authorizer=jwt_authorizer)
+        recommendations_user_resource.add_method("GET", recommendation_integration, authorizer=cognito_authorizer)
 
         # GET /recommendations/{user_id}/study-path - Get personalized study path (protected)
         study_path_resource = recommendations_user_resource.add_resource("study-path")
-        study_path_resource.add_method("GET", recommendation_integration, authorizer=jwt_authorizer)
+        study_path_resource.add_method("GET", recommendation_integration, authorizer=cognito_authorizer)
 
         # POST /recommendations/{user_id}/feedback - Record recommendation feedback (protected)
         feedback_resource = recommendations_user_resource.add_resource("feedback")
-        feedback_resource.add_method("POST", recommendation_integration, authorizer=jwt_authorizer)
+        feedback_resource.add_method("POST", recommendation_integration, authorizer=cognito_authorizer)
 
         # GET /recommendations/{user_id}/weak-areas - Get weak areas analysis (protected)
         weak_areas_resource = recommendations_user_resource.add_resource("weak-areas")
-        weak_areas_resource.add_method("GET", recommendation_integration, authorizer=jwt_authorizer)
+        weak_areas_resource.add_method("GET", recommendation_integration, authorizer=cognito_authorizer)
 
         # GET /recommendations/{user_id}/content-progression - Get content difficulty progression (protected)
         content_progression_resource = recommendations_user_resource.add_resource("content-progression")
-        content_progression_resource.add_method("GET", recommendation_integration, authorizer=jwt_authorizer)
+        content_progression_resource.add_method("GET", recommendation_integration, authorizer=cognito_authorizer)
 
         # Maintain backward compatibility
         query_resource = api.root.add_resource("query")

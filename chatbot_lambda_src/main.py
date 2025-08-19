@@ -13,6 +13,7 @@ from botocore.exceptions import ClientError
 # Initialize clients and get environment variables
 bedrock_runtime = boto3.client('bedrock-runtime')
 dynamodb = boto3.resource('dynamodb')
+s3_client = boto3.client('s3')
 opensearch_endpoint = os.environ['OPENSEARCH_ENDPOINT']
 opensearch_index = os.environ['OPENSEARCH_INDEX']
 conversation_table_name = os.environ['CONVERSATION_TABLE']
@@ -33,6 +34,17 @@ opensearch_client = OpenSearch(
 
 # DynamoDB table
 conversation_table = dynamodb.Table(conversation_table_name)
+
+def get_cors_headers():
+    """Get standardized CORS headers for all responses."""
+    return {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With,Accept,Origin,Referer,X-Request-Time',
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Max-Age': '3600'
+    }
 
 def invoke_bedrock_with_retry(body: str, model_id: str, max_retries: int = 2) -> Optional[Dict]:
     """
@@ -388,14 +400,22 @@ def handle_chat_message(event: Dict) -> Dict:
         requested_mode = body.get("mode")  # 'rag' or 'enhanced'
         conversation_id = body.get("conversation_id")
         
-        # Get user_id from authorizer context (JWT token)
-        authorizer_context = event.get("requestContext", {}).get("authorizer", {})
-        user_id = authorizer_context.get("user_id", body.get("user_id", "anonymous"))
+        # Get user_id from authorizer context (Cognito User Pool authorizer)
+        request_context = event.get("requestContext", {})
+        authorizer_context = request_context.get("authorizer", {})
+        
+        # For Cognito User Pool authorizer, user info is in claims
+        claims = authorizer_context.get("claims", {})
+        user_id = claims.get("sub") or claims.get("cognito:username") or authorizer_context.get("user_id", body.get("user_id", "anonymous"))
+        
+        print(f"User ID extracted: {user_id}")
+        print(f"Authorizer context: {authorizer_context}")
+        print(f"Claims: {claims}")
         
         if not message:
             return {
                 'statusCode': 400,
-                'headers': {'Content-Type': 'application/json'},
+                'headers': get_cors_headers(),
                 'body': json.dumps({"error": "Message is required"})
             }
         
@@ -479,8 +499,10 @@ def handle_chat_message(event: Dict) -> Dict:
             'headers': {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
-                'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With,Accept,Origin,Referer',
+                'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+                'Access-Control-Allow-Credentials': 'true',
+                'Access-Control-Max-Age': '3600'
             },
             'body': json.dumps({
                 "response": response,
@@ -498,7 +520,7 @@ def handle_chat_message(event: Dict) -> Dict:
         print(f"Error handling chat message: {e}")
         return {
             'statusCode': 500,
-            'headers': {'Content-Type': 'application/json'},
+            'headers': get_cors_headers(),
             'body': json.dumps({"error": "An error occurred processing your message"})
         }
 
@@ -529,8 +551,10 @@ def handle_get_conversation(event: Dict) -> Dict:
             'headers': {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
-                'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With,Accept,Origin,Referer',
+                'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+                'Access-Control-Allow-Credentials': 'true',
+                'Access-Control-Max-Age': '3600'
             },
             'body': json.dumps({
                 "conversation": conversation
@@ -572,8 +596,10 @@ def handle_delete_conversation(event: Dict) -> Dict:
             'headers': {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
-                'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With,Accept,Origin,Referer',
+                'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+                'Access-Control-Allow-Credentials': 'true',
+                'Access-Control-Max-Age': '3600'
             },
             'body': json.dumps({"success": True})
         }
@@ -587,6 +613,120 @@ def handle_delete_conversation(event: Dict) -> Dict:
         }
 
 
+def handle_list_resources(event):
+    """Handle listing resources for a specific certification."""
+    try:
+        # Extract certification from path parameters
+        path_params = event.get("pathParameters", {})
+        certification = path_params.get("certification", "").lower()
+        
+        if not certification:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
+                    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+                },
+                'body': json.dumps({"error": "Certification parameter is required"})
+            }
+        
+        # Construct bucket name based on certification
+        bucket_name = f"procert-materials-{certification}-353207798766"
+        
+        try:
+            # List objects in the S3 bucket
+            response = s3_client.list_objects_v2(Bucket=bucket_name, MaxKeys=100)
+            
+            resources = []
+            if 'Contents' in response:
+                for obj in response['Contents']:
+                    # Skip folders and system files
+                    if not obj['Key'].endswith('/') and not obj['Key'].startswith('.'):
+                        # Try to determine content type from file extension
+                        content_type = 'application/pdf'
+                        if obj['Key'].lower().endswith('.pdf'):
+                            content_type = 'application/pdf'
+                        elif obj['Key'].lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                            content_type = 'image'
+                        elif obj['Key'].lower().endswith(('.doc', '.docx')):
+                            content_type = 'application/msword'
+                        elif obj['Key'].lower().endswith('.txt'):
+                            content_type = 'text/plain'
+                        
+                        # Clean up the filename for display
+                        display_name = obj['Key'].split('/')[-1]
+                        # Remove common prefixes and make it more readable
+                        display_name = display_name.replace('_', ' ').replace('-', ' ')
+                        
+                        resources.append({
+                            'key': obj['Key'],
+                            'name': display_name,
+                            'size': obj['Size'],
+                            'lastModified': obj['LastModified'].isoformat(),
+                            'contentType': content_type
+                        })
+            
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With,Accept,Origin,Referer',
+                    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+                    'Access-Control-Allow-Credentials': 'true',
+                    'Access-Control-Max-Age': '3600'
+                },
+                'body': json.dumps({
+                    'certification': certification,
+                    'bucket': bucket_name,
+                    'resources': resources,
+                    'total': len(resources)
+                })
+            }
+            
+        except s3_client.exceptions.NoSuchBucket:
+            return {
+                'statusCode': 404,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
+                    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+                },
+                'body': json.dumps({
+                    "error": f"No resources found for certification: {certification}",
+                    "certification": certification
+                })
+            }
+        except Exception as e:
+            print(f"Error listing S3 objects: {e}")
+            return {
+                'statusCode': 500,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
+                    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+                },
+                'body': json.dumps({"error": "Failed to list resources"})
+            }
+            
+    except Exception as e:
+        print(f"Error in handle_list_resources: {e}")
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
+                'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+            },
+            'body': json.dumps({"error": "An internal error occurred"})
+        }
+
+
 def handler(event, context):
     """Main handler for the enhanced chatbot API."""
     print(f"Received event: {json.dumps(event)}")
@@ -596,11 +736,7 @@ def handler(event, context):
         if event.get("httpMethod") == "OPTIONS":
             return {
                 'statusCode': 200,
-                'headers': {
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key',
-                    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-                }
+                'headers': get_cors_headers()
             }
         
         # Route based on path and method
@@ -613,6 +749,11 @@ def handler(event, context):
             return handle_get_conversation(event)
         elif path == "/chat/conversation/{id}" and method == "DELETE":
             return handle_delete_conversation(event)
+        elif path == "/resources/{certification}" and method == "GET":
+            return handle_list_resources(event)
+        elif path.startswith("/resources/") and method == "GET":
+            # Handle dynamic path matching for resources
+            return handle_list_resources(event)
         elif path == "/query" and method == "POST":
             # Backward compatibility - convert old format to new
             body = json.loads(event.get("body", "{}"))

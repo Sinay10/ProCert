@@ -53,6 +53,17 @@ if OPENSEARCH_ENDPOINT:
 else:
     opensearch_client = None
 
+def get_cors_headers():
+    """Get standardized CORS headers for all responses."""
+    return {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With,Accept,Origin,Referer,X-Request-Time',
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Max-Age': '3600'
+    }
+
 
 def convert_floats_to_decimal(obj):
     """Convert float values to Decimal for DynamoDB compatibility."""
@@ -917,7 +928,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Extract authenticated user context from JWT authorizer
         request_context = event.get('requestContext', {})
         authorizer_context = request_context.get('authorizer', {})
-        authenticated_user_id = authorizer_context.get('user_id')
+        
+        # For Cognito User Pool authorizer, user info is in claims
+        claims = authorizer_context.get('claims', {})
+        authenticated_user_id = claims.get('sub') or claims.get('cognito:username') or authorizer_context.get('user_id')
+        
+        logger.info(f"User ID extracted: {authenticated_user_id}")
+        logger.info(f"Authorizer context: {authorizer_context}")
+        logger.info(f"Claims: {claims}")
         
         logger.info(f"Processing {http_method} {path}")
         logger.info(f"Authenticated user: {authenticated_user_id}")
@@ -1089,11 +1107,6 @@ def create_response(status_code: int, body: Dict[str, Any]) -> Dict[str, Any]:
     
     return {
         'statusCode': status_code,
-        'headers': {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-            'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
-        },
+        'headers': get_cors_headers(),
         'body': json.dumps(serializable_body)
     }

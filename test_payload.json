@@ -1,0 +1,10 @@
+{
+  "httpMethod": "POST",
+  "resource": "/chat/message",
+  "body": "{\"message\": \"test\", \"certification\": \"general\"}",
+  "requestContext": {
+    "authorizer": {
+      "user_id": "test-user"
+    }
+  }
+}

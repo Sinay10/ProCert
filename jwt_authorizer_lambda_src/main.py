@@ -195,19 +195,31 @@ def generate_policy(principal_id: str, effect: str, resource: str) -> Dict[str, 
     Returns:
         IAM policy document
     """
+    logger.info(f"Generating policy: principal_id={principal_id}, effect={effect}, resource={resource}")
+    
     # For Allow policies, use wildcard to allow access to all API resources
     # For Deny policies, use the specific resource
     if effect == 'Allow':
         # Extract the API Gateway ARN base and allow all resources
         # Format: arn:aws:execute-api:region:account:api-id/stage/*/*
-        resource_parts = resource.split('/')
-        if len(resource_parts) >= 3:
-            api_base = '/'.join(resource_parts[:3])  # arn:aws:execute-api:region:account:api-id/stage
-            wildcard_resource = f"{api_base}/*/*"
-        else:
+        try:
+            resource_parts = resource.split('/')
+            logger.info(f"Resource parts: {resource_parts}")
+            
+            if len(resource_parts) >= 3:
+                # Build wildcard resource: arn:aws:execute-api:region:account:api-id/stage/*/*
+                api_base = '/'.join(resource_parts[:3])  # arn:aws:execute-api:region:account:api-id/stage
+                wildcard_resource = f"{api_base}/*/*"
+                logger.info(f"Generated wildcard resource: {wildcard_resource}")
+            else:
+                logger.warning(f"Unexpected resource format, using as-is: {resource}")
+                wildcard_resource = resource
+        except Exception as e:
+            logger.error(f"Error parsing resource ARN: {e}, using original resource")
             wildcard_resource = resource
     else:
         wildcard_resource = resource
+        logger.info(f"Deny policy, using specific resource: {wildcard_resource}")
     
     policy = {
         'principalId': principal_id,
@@ -223,4 +235,5 @@ def generate_policy(principal_id: str, effect: str, resource: str) -> Dict[str, 
         }
     }
     
+    logger.info(f"Generated policy: {json.dumps(policy, indent=2)}")
     return policy
