@@ -14,6 +14,8 @@ const navigation = [
   { name: 'Quizzes', href: '/quizzes' },
   { name: 'Progress', href: '/progress' },
   { name: 'Study Path', href: '/study-path' },
+  { name: 'Resources', href: '/resources' },
+  { name: 'Achievements', href: '/achievements' },
 ]
 
 export function Header() {
