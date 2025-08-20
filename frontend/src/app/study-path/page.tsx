@@ -63,21 +63,25 @@ export default function StudyPathPage() {
 
   // Subscribe to mock data updates
   useEffect(() => {
-    if (usingMockData) {
-      const unsubscribe = mockDataStore.subscribe(() => {
+    const unsubscribe = mockDataStore.subscribe(() => {
+      if (usingMockData || mockDataStore.demoMode) {
         setActivePaths(mockDataStore.activePaths)
         setStudySessions(mockDataStore.studySessions)
         setGoals(mockDataStore.goals)
         setAnalytics(mockDataStore.analytics)
-      })
-      
-      // Initialize with current mock data
+        setRecommendations(mockDataStore.recommendations)
+        setStudyPath(mockDataStore.studyPath)
+      }
+    })
+    
+    // Initialize with current mock data if using mock data
+    if (usingMockData || mockDataStore.demoMode) {
       setActivePaths(mockDataStore.activePaths)
       setStudySessions(mockDataStore.studySessions)
       setGoals(mockDataStore.goals)
-      
-      return unsubscribe
     }
+    
+    return unsubscribe
   }, [usingMockData])
 
   useEffect(() => {
@@ -92,72 +96,28 @@ export default function StudyPathPage() {
       return
     }
 
-    console.log('Loading study path data for user:', session.userId)
-    console.log('Session details:', {
-      userId: session.userId,
-      hasAccessToken: !!session.accessToken,
-      accessTokenLength: session.accessToken?.length || 0
-    })
     setLoading(true)
     
     try {
-      // Try to load real data first, fall back to mock data if endpoints don't exist
-      try {
-        console.log('Attempting to load real data from API...')
-        
-        // Load recommendations
-        const certType = getCertificationType(selectedCertification)
-        const recommendationsUrl = API_ENDPOINTS.RECOMMENDATIONS(session.userId) + `?certification_type=${certType}&limit=10`
-        console.log('Loading recommendations from:', recommendationsUrl)
-        const recommendationsData = await apiClient.get<RecommendationResponse>(recommendationsUrl)
-        setRecommendations(recommendationsData.recommendations)
-
-        // Load study path
-        const studyPathUrl = API_ENDPOINTS.STUDY_PATH(session.userId, selectedCertification) + `?certification_type=${certType}`
-        console.log('Loading study path from:', studyPathUrl)
-        const studyPathData = await apiClient.get<StudyPath>(studyPathUrl)
-        setStudyPath(studyPathData)
-
-        // Load analytics
-        const analyticsUrl = API_ENDPOINTS.ANALYTICS(session.userId)
-        console.log('Loading analytics from:', analyticsUrl)
-        const analyticsData = await apiClient.get<UserAnalytics>(analyticsUrl)
-        setAnalytics(analyticsData)
-        
-        console.log('Successfully loaded real data')
-      } catch (apiError: any) {
-        console.log('API call failed:', apiError)
-        
-        // Check if it's an authentication issue
-        if (apiError.message?.includes('403') || apiError.message?.includes('401') || apiError.message?.includes('Unauthorized')) {
-          console.log('Authentication issue detected - user may need to sign in again')
-          // Still use mock data for now, but show a message
-          setRecommendations(mockDataStore.recommendations)
-          setStudyPath(mockDataStore.studyPath)
-          setAnalytics(mockDataStore.analytics)
-          setUsingMockData(true)
-          console.log('Using mock data due to authentication issue')
-        } else {
-          console.log('API endpoints not available, using mock data:', apiError)
-          // Use mock data for development
-          setRecommendations(mockDataStore.recommendations)
-          setStudyPath(mockDataStore.studyPath)
-          setAnalytics(mockDataStore.analytics)
-          setUsingMockData(true)
-          console.log('Mock data loaded successfully')
-        }
-      }
+      // Try to load real data first
+      // const certType = getCertificationType(selectedCertification)
+      // const recommendationsData = await apiClient.get<RecommendationResponse>(API_ENDPOINTS.RECOMMENDATIONS(session.userId) + `?certification_type=${certType}&limit=10`)
+      // const studyPathData = await apiClient.get<StudyPath>(API_ENDPOINTS.STUDY_PATH(session.userId, selectedCertification) + `?certification_type=${certType}`)
+      // const analyticsData = await apiClient.get<UserAnalytics>(API_ENDPOINTS.ANALYTICS(session.userId))
+      
+      // For now, always use mock data
+      throw new Error('API not implemented yet')
     } catch (error) {
-      console.error('Failed to load study path data:', error)
-      // Fallback to mock data
+      console.log('Using mock data for study path page')
       setRecommendations(mockDataStore.recommendations)
       setStudyPath(mockDataStore.studyPath)
       setAnalytics(mockDataStore.analytics)
       setUsingMockData(true)
-      console.log('Fallback to mock data due to error')
+      
+      // Enable demo mode and populate demo data
+      mockDataStore.setDemoMode(true)
     } finally {
       setLoading(false)
-      console.log('Loading complete')
     }
   }
 

@@ -13,7 +13,20 @@ import {
   Award,
   Users,
   Clock,
-  ChevronRight
+  ChevronRight,
+  Brain,
+  Database,
+  Shield,
+  Network,
+  Cpu,
+  Sparkles,
+  Cloud,
+  Building,
+  Code,
+  Settings,
+  Crown,
+  Zap,
+  Lock
 } from 'lucide-react'
 import { CertificationResourceList } from './certification-resource-list'
 
@@ -33,7 +46,7 @@ const CERTIFICATIONS = [
     description: 'Entry-level certification covering basic AWS cloud concepts',
     level: 'Foundational',
     color: 'bg-green-100 text-green-800',
-    icon: Award
+    icon: Cloud
   },
   {
     id: 'aip',
@@ -41,7 +54,7 @@ const CERTIFICATIONS = [
     description: 'AI and machine learning fundamentals on AWS',
     level: 'Foundational',
     color: 'bg-purple-100 text-purple-800',
-    icon: Award
+    icon: Sparkles
   },
   {
     id: 'saa',
@@ -49,7 +62,7 @@ const CERTIFICATIONS = [
     description: 'Designing distributed systems and architectures on AWS',
     level: 'Associate',
     color: 'bg-blue-100 text-blue-800',
-    icon: Users
+    icon: Building
   },
   {
     id: 'dva',
@@ -57,7 +70,7 @@ const CERTIFICATIONS = [
     description: 'Developing and maintaining applications on AWS',
     level: 'Associate',
     color: 'bg-blue-100 text-blue-800',
-    icon: Users
+    icon: Code
   },
   {
     id: 'soa',
@@ -65,7 +78,7 @@ const CERTIFICATIONS = [
     description: 'Operating and managing systems on AWS',
     level: 'Associate',
     color: 'bg-blue-100 text-blue-800',
-    icon: Users
+    icon: Settings
   },
   {
     id: 'mla',
@@ -73,7 +86,7 @@ const CERTIFICATIONS = [
     description: 'Implementing and maintaining ML solutions on AWS',
     level: 'Associate',
     color: 'bg-blue-100 text-blue-800',
-    icon: Users
+    icon: Brain
   },
   {
     id: 'dea',
@@ -81,7 +94,7 @@ const CERTIFICATIONS = [
     description: 'Designing and implementing data solutions on AWS',
     level: 'Associate',
     color: 'bg-blue-100 text-blue-800',
-    icon: Users
+    icon: Database
   },
   {
     id: 'dop',
@@ -89,7 +102,7 @@ const CERTIFICATIONS = [
     description: 'Advanced DevOps practices and automation on AWS',
     level: 'Professional',
     color: 'bg-red-100 text-red-800',
-    icon: Clock
+    icon: Zap
   },
   {
     id: 'sap',
@@ -97,7 +110,7 @@ const CERTIFICATIONS = [
     description: 'Advanced architectural design and complex solutions on AWS',
     level: 'Professional',
     color: 'bg-red-100 text-red-800',
-    icon: Clock
+    icon: Crown
   },
   {
     id: 'mls',
@@ -105,7 +118,7 @@ const CERTIFICATIONS = [
     description: 'Specialized machine learning implementations on AWS',
     level: 'Specialty',
     color: 'bg-yellow-100 text-yellow-800',
-    icon: FileText
+    icon: Cpu
   },
   {
     id: 'scs',
@@ -113,7 +126,7 @@ const CERTIFICATIONS = [
     description: 'Specialized security implementations and best practices on AWS',
     level: 'Specialty',
     color: 'bg-yellow-100 text-yellow-800',
-    icon: FileText
+    icon: Shield
   },
   {
     id: 'ans',
@@ -121,7 +134,7 @@ const CERTIFICATIONS = [
     description: 'Advanced networking concepts and implementations on AWS',
     level: 'Specialty',
     color: 'bg-yellow-100 text-yellow-800',
-    icon: FileText
+    icon: Network
   }
 ]
 

@@ -17,6 +17,18 @@ export function QuizResults({ result, quiz, userAnswers, onRetakeQuiz, onViewHis
   const correctCount = result.correct_answers
   const totalQuestions = result.total_questions
 
+  // Helper function to get full answer text from letter
+  const getAnswerText = (answerLetter: string, options: string[]) => {
+    if (!answerLetter || !options) return answerLetter
+    const answerIndex = answerLetter.charCodeAt(0) - 65 // Convert A,B,C,D to 0,1,2,3
+    if (answerIndex >= 0 && answerIndex < options.length) {
+      const optionText = options[answerIndex]
+      // Remove the letter prefix if it exists (e.g., "A) Text" -> "Text")
+      return optionText.replace(/^[A-D]\)\s*/, '')
+    }
+    return answerLetter
+  }
+
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-success-600'
     if (score >= 60) return 'text-warning-600'
@@ -104,6 +116,8 @@ export function QuizResults({ result, quiz, userAnswers, onRetakeQuiz, onViewHis
             {result.results.map((questionResult, index) => {
               const userAnswer = questionResult.user_answer
               const isCorrect = questionResult.is_correct
+              const userAnswerText = getAnswerText(userAnswer, questionResult.options)
+              const correctAnswerText = getAnswerText(questionResult.correct_answer, questionResult.options)
 
               return (
                 <div
@@ -136,22 +150,20 @@ export function QuizResults({ result, quiz, userAnswers, onRetakeQuiz, onViewHis
                     </p>
 
                     {/* Answers */}
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-secondary-700">Your answer:</span>
-                        <span className={isCorrect ? 'text-success-700' : 'text-error-700'}>
-                          {userAnswer}
+                    <div className="space-y-3 text-sm">
+                      <div>
+                        <span className="font-medium text-secondary-700">Your answer: </span>
+                        <span className={`font-medium ${isCorrect ? 'text-success-700' : 'text-error-700'}`}>
+                          {userAnswer}: {userAnswerText}
                         </span>
                       </div>
                       
-                      {!isCorrect && (
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-secondary-700">Correct answer:</span>
-                          <span className="text-success-700">
-                            {questionResult.correct_answer}
-                          </span>
-                        </div>
-                      )}
+                      <div>
+                        <span className="font-medium text-secondary-700">Correct answer: </span>
+                        <span className="font-medium text-success-700">
+                          {questionResult.correct_answer}: {correctAnswerText}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Explanation */}

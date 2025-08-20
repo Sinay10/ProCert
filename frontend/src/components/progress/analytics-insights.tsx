@@ -149,7 +149,7 @@ export function AnalyticsInsights({ data, loading }: AnalyticsInsightsProps) {
                   <div className="flex items-center gap-2">
                     <ReadinessIcon className="h-4 w-4" />
                     <span className="text-sm text-secondary-900">
-                      {cert.replace(/-/g, ' ').toUpperCase()}
+                      {cert.toUpperCase()}
                     </span>
                   </div>
                   <div className={`px-2 py-1 rounded text-xs font-medium ${getReadinessColor(percentage)}`}>
@@ -170,7 +170,7 @@ export function AnalyticsInsights({ data, loading }: AnalyticsInsightsProps) {
                 <div className="flex items-center gap-2">
                   <Target className="h-4 w-4 text-secondary-600" />
                   <span className="text-sm text-secondary-900">
-                    {cert.replace(/-/g, ' ').toUpperCase()}
+                    {cert.toUpperCase()}
                   </span>
                 </div>
                 <span className="text-sm font-medium text-secondary-700">

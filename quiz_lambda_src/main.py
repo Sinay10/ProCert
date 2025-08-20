@@ -417,10 +417,19 @@ def select_adaptive_questions(questions: List[Dict[str, Any]], user_performance:
                 additional_count = min(remaining_count, len(remaining_questions))
                 selected_questions.extend(random.sample(remaining_questions, additional_count))
         
-        # Shuffle the final selection
-        random.shuffle(selected_questions)
+        # Remove duplicates within the selection (by content_id)
+        seen_ids = set()
+        unique_selected = []
+        for question in selected_questions:
+            question_id = question.get("content_id", question.get("question_text", ""))
+            if question_id not in seen_ids:
+                seen_ids.add(question_id)
+                unique_selected.append(question)
         
-        return selected_questions[:count]
+        # Shuffle the final selection
+        random.shuffle(unique_selected)
+        
+        return unique_selected[:count]
         
     except Exception as e:
         logger.error(f"Error in adaptive question selection: {str(e)}")
@@ -688,7 +697,7 @@ def create_quiz_session(user_id: str, certification_type: str, question_count: i
         if len(selected_questions) < question_count:
             logger.warning(f"Could only find {len(selected_questions)} questions out of {question_count} requested")
         
-        # Prepare questions for storage (without correct answers)
+        # Prepare questions for storage (with correct answers for scoring)
         quiz_questions = []
         for i, question in enumerate(selected_questions):
             quiz_question = {

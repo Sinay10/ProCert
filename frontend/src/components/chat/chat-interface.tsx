@@ -156,6 +156,14 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     { value: 'aws-solutions-architect-associate', label: 'AWS Solutions Architect Associate' },
     { value: 'aws-developer-associate', label: 'AWS Developer Associate' },
     { value: 'aws-sysops-administrator-associate', label: 'AWS SysOps Administrator Associate' },
+    { value: 'aws-solutions-architect-professional', label: 'AWS Solutions Architect Professional' },
+    { value: 'aws-devops-engineer-professional', label: 'AWS DevOps Engineer Professional' },
+    { value: 'aws-machine-learning-specialty', label: 'AWS Machine Learning Specialty' },
+    { value: 'aws-security-specialty', label: 'AWS Security Specialty' },
+    { value: 'aws-advanced-networking-specialty', label: 'AWS Advanced Networking Specialty' },
+    { value: 'aws-ai-practitioner', label: 'AWS AI Practitioner' },
+    { value: 'aws-machine-learning-engineer-associate', label: 'AWS Machine Learning Engineer Associate' },
+    { value: 'aws-data-engineer-associate', label: 'AWS Data Engineer Associate' },
   ]
 
   if (!session) {

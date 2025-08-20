@@ -10,10 +10,17 @@ interface DemoBannerProps {
 
 export function DemoBanner({ onDismiss }: DemoBannerProps) {
   const [isVisible, setIsVisible] = useState(true)
+  const [demoMode, setDemoMode] = useState(mockDataStore.demoMode)
 
   const handleDismiss = () => {
     setIsVisible(false)
     onDismiss?.()
+  }
+
+  const handleToggleDemoMode = () => {
+    const newDemoMode = !demoMode
+    setDemoMode(newDemoMode)
+    mockDataStore.setDemoMode(newDemoMode)
   }
 
   const handleQuickAction = (action: string) => {
@@ -29,22 +36,6 @@ export function DemoBanner({ onDismiss }: DemoBannerProps) {
         break
       case 'add-study-time':
         mockDataStore.addStudyTime(30) // Add 30 minutes
-        break
-      case 'start-path':
-        mockDataStore.startStudyPath({
-          certification: 'SAA',
-          totalTopics: 6,
-          firstTopic: 'AWS Fundamentals',
-          estimatedTime: 180,
-          topics: [
-            { id: 'topic-1', title: 'AWS Fundamentals', status: 'current' },
-            { id: 'topic-2', title: 'EC2 Deep Dive', status: 'locked' },
-            { id: 'topic-3', title: 'Storage Solutions', status: 'locked' },
-            { id: 'topic-4', title: 'Networking', status: 'locked' },
-            { id: 'topic-5', title: 'Security', status: 'locked' },
-            { id: 'topic-6', title: 'Final Review', status: 'locked' }
-          ]
-        })
         break
     }
   }
@@ -77,11 +68,11 @@ export function DemoBanner({ onDismiss }: DemoBannerProps) {
                 <span>Add Study Time</span>
               </button>
               <button
-                onClick={() => handleQuickAction('start-path')}
+                onClick={handleToggleDemoMode}
                 className="flex items-center space-x-1 px-2 py-1 bg-white/20 rounded hover:bg-white/30 transition-colors"
               >
                 <Target className="w-3 h-3" />
-                <span>Start New Path</span>
+                <span>{demoMode ? 'Disable Demo' : 'Enable Demo'}</span>
               </button>
             </div>
           </div>

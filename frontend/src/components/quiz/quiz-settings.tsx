@@ -17,13 +17,18 @@ interface QuizSettingsProps {
 }
 
 const CERTIFICATIONS = [
-  { value: 'aws-advanced-networking-specialty', label: 'AWS Advanced Networking Specialty', backendCode: 'ANS' },
   { value: 'aws-cloud-practitioner', label: 'AWS Cloud Practitioner', backendCode: 'CLF' },
   { value: 'aws-solutions-architect-associate', label: 'AWS Solutions Architect Associate', backendCode: 'SAA' },
   { value: 'aws-developer-associate', label: 'AWS Developer Associate', backendCode: 'DVA' },
   { value: 'aws-sysops-administrator-associate', label: 'AWS SysOps Administrator Associate', backendCode: 'SOA' },
   { value: 'aws-solutions-architect-professional', label: 'AWS Solutions Architect Professional', backendCode: 'SAP' },
   { value: 'aws-devops-engineer-professional', label: 'AWS DevOps Engineer Professional', backendCode: 'DOP' },
+  { value: 'aws-machine-learning-specialty', label: 'AWS Machine Learning Specialty', backendCode: 'MLS' },
+  { value: 'aws-security-specialty', label: 'AWS Security Specialty', backendCode: 'SCS' },
+  { value: 'aws-advanced-networking-specialty', label: 'AWS Advanced Networking Specialty', backendCode: 'ANS' },
+  { value: 'aws-ai-practitioner', label: 'AWS AI Practitioner', backendCode: 'AIP' },
+  { value: 'aws-machine-learning-engineer-associate', label: 'AWS Machine Learning Engineer Associate', backendCode: 'MLA' },
+  { value: 'aws-data-engineer-associate', label: 'AWS Data Engineer Associate', backendCode: 'DEA' },
 ]
 
 // Helper function to get backend certification code

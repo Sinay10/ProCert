@@ -48,12 +48,43 @@ export function PerformanceTrends({ data, loading, timeframe }: PerformanceTrend
     )
   }
 
+  // Filter data based on timeframe
+  const getFilteredData = () => {
+    if (!data || data.length === 0) return []
+    
+    const now = new Date()
+    const filtered = data.filter(item => {
+      const itemDate = new Date(item.date)
+      const diffInDays = Math.floor((now.getTime() - itemDate.getTime()) / (1000 * 60 * 60 * 24))
+      
+      // Don't show future dates
+      if (diffInDays < 0) return false
+      
+      switch (timeframe) {
+        case 'week':
+          return diffInDays <= 7
+        case 'month':
+          return diffInDays <= 30
+        case 'quarter':
+          return diffInDays <= 90
+        case 'year':
+          return diffInDays <= 365
+        default:
+          return true
+      }
+    })
+    
+    return filtered.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  }
+
+  const filteredData = getFilteredData()
+
   // Calculate trend direction
   const calculateTrend = () => {
-    if (data.length < 2) return 'neutral'
+    if (filteredData.length < 2) return 'neutral'
     
-    const recent = data.slice(-5) // Last 5 data points
-    const older = data.slice(-10, -5) // Previous 5 data points
+    const recent = filteredData.slice(-3) // Last 3 data points
+    const older = filteredData.slice(0, -3) // Earlier data points
     
     if (recent.length === 0 || older.length === 0) return 'neutral'
     
@@ -62,14 +93,14 @@ export function PerformanceTrends({ data, loading, timeframe }: PerformanceTrend
     
     const difference = recentAvg - olderAvg
     
-    if (difference > 5) return 'up'
-    if (difference < -5) return 'down'
+    if (difference > 3) return 'up'
+    if (difference < -3) return 'down'
     return 'neutral'
   }
 
   const trend = calculateTrend()
-  const maxScore = Math.max(...data.map(d => d.score), 100)
-  const maxStudyTime = Math.max(...data.map(d => d.study_time))
+  const maxScore = Math.max(...filteredData.map(d => d.score), 100)
+  const maxStudyTime = Math.max(...filteredData.map(d => d.study_time), 1)
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -159,22 +190,24 @@ export function PerformanceTrends({ data, loading, timeframe }: PerformanceTrend
                 ))}
                 
                 {/* Score line */}
-                <polyline
-                  fill="none"
-                  stroke="#3b82f6"
-                  strokeWidth="2"
-                  points={data
-                    .map((item, index) => {
-                      const x = (index / (data.length - 1)) * 380 + 20
-                      const y = 120 - (item.score / 100) * 120
-                      return `${x},${y}`
-                    })
-                    .join(' ')}
-                />
+                {filteredData.length > 1 && (
+                  <polyline
+                    fill="none"
+                    stroke="#3b82f6"
+                    strokeWidth="2"
+                    points={filteredData
+                      .map((item, index) => {
+                        const x = (index / Math.max(filteredData.length - 1, 1)) * 380 + 20
+                        const y = 120 - (item.score / 100) * 120
+                        return `${x},${y}`
+                      })
+                      .join(' ')}
+                  />
+                )}
                 
                 {/* Score points */}
-                {data.map((item, index) => {
-                  const x = (index / (data.length - 1)) * 380 + 20
+                {filteredData.map((item, index) => {
+                  const x = (index / Math.max(filteredData.length - 1, 1)) * 380 + 20
                   const y = 120 - (item.score / 100) * 120
                   return (
                     <circle
@@ -196,32 +229,75 @@ export function PerformanceTrends({ data, loading, timeframe }: PerformanceTrend
           {/* Study Time Chart */}
           <div>
             <h4 className="text-sm font-medium text-secondary-700 mb-3">Study Time (minutes)</h4>
-            <div className="relative h-24">
-              <div className="flex items-end justify-between h-full">
-                {data.map((item, index) => {
-                  const height = maxStudyTime > 0 ? (item.study_time / maxStudyTime) * 100 : 0
-                  return (
-                    <div
-                      key={index}
-                      className="flex flex-col items-center group cursor-pointer"
-                      style={{ width: `${100 / data.length}%` }}
+            <div className="relative h-32">
+              <svg className="w-full h-full" viewBox="0 0 400 120">
+                {/* Grid lines for study time */}
+                {[0, 30, 60, 90, 120].map((value) => (
+                  <g key={value}>
+                    <line
+                      x1="0"
+                      y1={120 - (value / Math.max(maxStudyTime, 120)) * 120}
+                      x2="400"
+                      y2={120 - (value / Math.max(maxStudyTime, 120)) * 120}
+                      stroke="#f1f5f9"
+                      strokeWidth="1"
+                    />
+                    <text
+                      x="5"
+                      y={120 - (value / Math.max(maxStudyTime, 120)) * 120 - 5}
+                      className="text-xs fill-secondary-500"
                     >
-                      <div
-                        className="bg-green-500 rounded-t transition-all group-hover:bg-green-600"
-                        style={{ 
-                          height: `${height}%`,
-                          minHeight: item.study_time > 0 ? '2px' : '0',
-                          width: '80%'
-                        }}
-                        title={`${formatDate(item.date)}: ${item.study_time} minutes`}
-                      />
-                      <span className="text-xs text-secondary-500 mt-1 transform -rotate-45 origin-left">
+                      {value}m
+                    </text>
+                  </g>
+                ))}
+                
+                {/* Study time bars */}
+                {filteredData.map((item, index) => {
+                  const barWidth = 320 / Math.max(filteredData.length, 1)
+                  const x = (index * barWidth) + 40 + (barWidth * 0.1) // Add padding
+                  const barHeight = (item.study_time / Math.max(maxStudyTime, 120)) * 120
+                  const y = 120 - barHeight
+                  
+                  return (
+                    <g key={index}>
+                      <rect
+                        x={x}
+                        y={y}
+                        width={barWidth * 0.8}
+                        height={barHeight}
+                        fill="#10b981"
+                        className="hover:fill-green-600 transition-colors cursor-pointer"
+                        rx="2"
+                      >
+                        <title>{`${formatDate(item.date)}: ${item.study_time} minutes`}</title>
+                      </rect>
+                      
+                      {/* Date labels */}
+                      <text
+                        x={x + (barWidth * 0.4)}
+                        y={135}
+                        className="text-xs fill-secondary-500 text-anchor-middle"
+                        textAnchor="middle"
+                      >
                         {formatDate(item.date)}
-                      </span>
-                    </div>
+                      </text>
+                      
+                      {/* Value labels on top of bars */}
+                      {item.study_time >= 0 && (
+                        <text
+                          x={x + (barWidth * 0.4)}
+                          y={Math.max(y - 5, 10)} // Ensure label doesn't go above chart
+                          className="text-xs fill-secondary-700 text-anchor-middle font-medium"
+                          textAnchor="middle"
+                        >
+                          {item.study_time}m
+                        </text>
+                      )}
+                    </g>
                   )
                 })}
-              </div>
+              </svg>
             </div>
           </div>
 
@@ -229,13 +305,13 @@ export function PerformanceTrends({ data, loading, timeframe }: PerformanceTrend
           <div className="grid grid-cols-2 gap-4 pt-4 border-t">
             <div className="text-center">
               <div className="text-lg font-semibold text-secondary-900">
-                {Math.round(data.reduce((sum, item) => sum + item.score, 0) / data.length)}%
+                {filteredData.length > 0 ? Math.round(filteredData.reduce((sum, item) => sum + item.score, 0) / filteredData.length) : 0}%
               </div>
               <div className="text-sm text-secondary-600">Average Score</div>
             </div>
             <div className="text-center">
               <div className="text-lg font-semibold text-secondary-900">
-                {Math.round(data.reduce((sum, item) => sum + item.study_time, 0) / data.length)}m
+                {filteredData.length > 0 ? Math.round(filteredData.reduce((sum, item) => sum + item.study_time, 0) / filteredData.length) : 0}m
               </div>
               <div className="text-sm text-secondary-600">Avg Study Time</div>
             </div>

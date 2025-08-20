@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Clock, Target, Play, Pause, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { mockDataStore } from '@/lib/mock-data-store'
 
 interface StudyTimeTrackerProps {
   data?: {
@@ -19,9 +20,68 @@ export function StudyTimeTracker({ data, loading }: StudyTimeTrackerProps) {
   const [isTracking, setIsTracking] = useState(false)
   const [sessionTime, setSessionTime] = useState(0)
   const [dailyGoal] = useState(60) // 60 minutes daily goal
+  const [todayStudyTime, setTodayStudyTime] = useState(25)
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Calculate today's study time (mock for now - would come from API)
-  const todayStudyTime = 25 // This would be calculated from today's sessions
+  // Update today's study time when data changes
+  useEffect(() => {
+    if (data) {
+      const today = new Date().toISOString().split('T')[0]
+      const todayTrend = mockDataStore.progress.trends.find(t => t.date === today)
+      setTodayStudyTime(todayTrend?.study_time || 25)
+    }
+  }, [data])
+
+  // Subscribe to mock data updates
+  useEffect(() => {
+    const unsubscribe = mockDataStore.subscribe(() => {
+      const today = new Date().toISOString().split('T')[0]
+      const todayTrend = mockDataStore.progress.trends.find(t => t.date === today)
+      setTodayStudyTime(todayTrend?.study_time || 25)
+    })
+
+    return unsubscribe
+  }, [])
+
+  // Timer functionality
+  useEffect(() => {
+    if (isTracking) {
+      intervalRef.current = setInterval(() => {
+        setSessionTime(prev => prev + 1)
+      }, 1000)
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+      }
+    }
+  }, [isTracking])
+
+  const handleStartStop = () => {
+    if (isTracking) {
+      // Stop timer and save session if there's time recorded
+      if (sessionTime > 0) {
+        const minutes = Math.ceil(sessionTime / 60)
+        mockDataStore.addStudyTime(minutes)
+      }
+    }
+    setIsTracking(!isTracking)
+  }
+
+  const handleReset = () => {
+    setIsTracking(false)
+    setSessionTime(0)
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+  }
 
   if (loading) {
     return (
@@ -60,16 +120,6 @@ export function StudyTimeTracker({ data, loading }: StudyTimeTrackerProps) {
 
   const dailyProgress = Math.min((todayStudyTime / dailyGoal) * 100, 100)
   const weeklyAverage = data ? Math.round(data.total_study_time / 7) : 0
-
-  const handleStartStop = () => {
-    setIsTracking(!isTracking)
-    // In a real app, this would start/stop a timer and sync with the backend
-  }
-
-  const handleReset = () => {
-    setIsTracking(false)
-    setSessionTime(0)
-  }
 
   return (
     <Card>

@@ -43,7 +43,7 @@ export function QuestionDisplay({
           <div className="space-y-3">
             {question.options.map((option, index) => {
               const optionLetter = String.fromCharCode(65 + index) // A, B, C, D
-              const isSelected = selectedAnswer === option
+              const isSelected = selectedAnswer === optionLetter
               
               return (
                 <label
@@ -59,7 +59,7 @@ export function QuestionDisplay({
                   <input
                     type="radio"
                     name={`question-${question.question_id}`}
-                    value={option}
+                    value={optionLetter}
                     checked={isSelected}
                     onChange={(e) => onAnswerSelect(e.target.value)}
                     className="sr-only"

@@ -26,6 +26,8 @@ import { AchievementStats } from './achievement-stats'
 import { AchievementCard } from './achievement-card'
 import { apiClient, API_ENDPOINTS } from '@/lib/api-client'
 import { UserProgress } from '@/types/api'
+import { mockDataStore } from '@/lib/mock-data-store'
+import { DemoBanner } from '@/components/demo'
 
 export interface Achievement {
   id: string
@@ -49,6 +51,7 @@ export function AchievementsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [usingMockData, setUsingMockData] = useState(false)
 
   useEffect(() => {
     if (session?.userId) {
@@ -62,19 +65,35 @@ export function AchievementsPage() {
     }
   }, [progressData])
 
+  // Subscribe to mock data updates
+  useEffect(() => {
+    const unsubscribe = mockDataStore.subscribe(() => {
+      if (usingMockData) {
+        setProgressData(mockDataStore.progress)
+      }
+    })
+
+    return unsubscribe
+  }, [usingMockData])
+
   const fetchProgressData = async () => {
     if (!session?.userId) return
 
     try {
       setLoading(true)
       setError(null)
-      const data = await apiClient.get<UserProgress>(
-        API_ENDPOINTS.PROGRESS(session.userId)
-      )
-      setProgressData(data)
+      
+      // Try to load real data first
+      // const data = await apiClient.get<UserProgress>(API_ENDPOINTS.PROGRESS(session.userId))
+      // setProgressData(data)
+      // setUsingMockData(false)
+      
+      // For now, always use mock data
+      throw new Error('API not implemented yet')
     } catch (err) {
-      console.error('Error fetching progress data:', err)
-      setError('Failed to load progress data')
+      console.log('Using mock data for achievements page')
+      setProgressData(mockDataStore.progress)
+      setUsingMockData(true)
     } finally {
       setLoading(false)
     }
@@ -85,169 +104,151 @@ export function AchievementsPage() {
 
     const data = progressData.overall
     const certData = progressData.by_certification || {}
+    
+    // Get earned achievements from mock data store
+    const earnedAchievements = mockDataStore.achievements
+
+    // Helper function to check if achievement is earned
+    const isAchievementEarned = (id: string) => {
+      return earnedAchievements.some(a => a.id === id)
+    }
+
+    // Helper function to get earned date
+    const getEarnedDate = (id: string) => {
+      const earned = earnedAchievements.find(a => a.id === id)
+      return earned?.earned_date
+    }
 
     const allAchievements: Achievement[] = [
       // Study Time Achievements
       {
-        id: 'first-hour',
-        title: 'First Steps',
-        description: 'Complete your first hour of study',
-        icon: Clock,
-        rarity: 'common',
-        category: 'study',
-        earned: data.total_study_time >= 60,
-        earnedAt: data.total_study_time >= 60 ? new Date().toISOString() : undefined,
-        progress: Math.min(data.total_study_time, 60),
-        maxProgress: 60,
-        requirement: 'Study for 1 hour',
-        points: 10
-      },
-      {
-        id: 'dedicated-learner',
-        title: 'Dedicated Learner',
-        description: 'Study for 10 hours total',
-        icon: BookOpen,
-        rarity: 'common',
-        category: 'study',
-        earned: data.total_study_time >= 600,
-        earnedAt: data.total_study_time >= 600 ? new Date().toISOString() : undefined,
-        progress: Math.min(data.total_study_time, 600),
-        maxProgress: 600,
-        requirement: 'Study for 10 hours',
-        points: 50
-      },
-      {
-        id: 'study-marathon',
-        title: 'Study Marathon',
-        description: 'Study for 50 hours total',
-        icon: Target,
-        rarity: 'rare',
-        category: 'study',
-        earned: data.total_study_time >= 3000,
-        earnedAt: data.total_study_time >= 3000 ? new Date().toISOString() : undefined,
-        progress: Math.min(data.total_study_time, 3000),
-        maxProgress: 3000,
-        requirement: 'Study for 50 hours',
-        points: 200
-      },
-
-      // Quiz Achievements
-      {
         id: 'first-quiz',
-        title: 'Quiz Rookie',
-        description: 'Complete your first quiz',
-        icon: Brain,
+        title: earnedAchievements.find(a => a.id === 'first-quiz')?.title || 'First Quiz Completed',
+        description: earnedAchievements.find(a => a.id === 'first-quiz')?.description || 'Complete your first quiz',
+        icon: Trophy,
         rarity: 'common',
-        category: 'quiz',
-        earned: data.quizzes_completed >= 1,
-        earnedAt: data.quizzes_completed >= 1 ? new Date().toISOString() : undefined,
-        progress: Math.min(data.quizzes_completed, 1),
+        category: 'milestone',
+        earned: isAchievementEarned('first-quiz'),
+        earnedAt: getEarnedDate('first-quiz'),
+        progress: data.quizzes_completed >= 1 ? 1 : 0,
         maxProgress: 1,
         requirement: 'Complete 1 quiz',
         points: 15
       },
       {
-        id: 'quiz-enthusiast',
-        title: 'Quiz Enthusiast',
-        description: 'Complete 10 quizzes',
-        icon: Star,
+        id: 'study-streak-3',
+        title: earnedAchievements.find(a => a.id === 'study-streak-3')?.title || '3-Day Study Streak',
+        description: earnedAchievements.find(a => a.id === 'study-streak-3')?.description || 'Study for 3 consecutive days',
+        icon: Calendar,
         rarity: 'common',
-        category: 'quiz',
-        earned: data.quizzes_completed >= 10,
-        earnedAt: data.quizzes_completed >= 10 ? new Date().toISOString() : undefined,
-        progress: Math.min(data.quizzes_completed, 10),
-        maxProgress: 10,
-        requirement: 'Complete 10 quizzes',
-        points: 75
+        category: 'streak',
+        earned: isAchievementEarned('study-streak-3'),
+        earnedAt: getEarnedDate('study-streak-3'),
+        progress: Math.min(data.streak_days, 3),
+        maxProgress: 3,
+        requirement: '3-day study streak',
+        points: 50
       },
       {
-        id: 'quiz-master',
-        title: 'Quiz Master',
-        description: 'Complete 50 quizzes',
-        icon: Crown,
-        rarity: 'epic',
-        category: 'quiz',
-        earned: data.quizzes_completed >= 50,
-        earnedAt: data.quizzes_completed >= 50 ? new Date().toISOString() : undefined,
-        progress: Math.min(data.quizzes_completed, 50),
-        maxProgress: 50,
-        requirement: 'Complete 50 quizzes',
-        points: 300
-      },
-
-      // Performance Achievements
-      {
-        id: 'high-achiever',
-        title: 'High Achiever',
-        description: 'Maintain an average score of 80% or higher',
+        id: 'score-improvement',
+        title: earnedAchievements.find(a => a.id === 'score-improvement')?.title || 'Score Improver',
+        description: earnedAchievements.find(a => a.id === 'score-improvement')?.description || 'Improved average score significantly',
         icon: TrendingUp,
         rarity: 'rare',
-        category: 'milestone',
-        earned: data.average_score >= 80,
-        earnedAt: data.average_score >= 80 ? new Date().toISOString() : undefined,
-        progress: Math.min(data.average_score, 80),
-        maxProgress: 80,
-        requirement: 'Average 80% quiz score',
-        points: 150
-      },
-      {
-        id: 'perfectionist',
-        title: 'Perfectionist',
-        description: 'Achieve a perfect 100% score on a quiz',
-        icon: Shield,
-        rarity: 'epic',
-        category: 'milestone',
-        earned: data.average_score >= 100, // This would need to be tracked differently in real implementation
-        earnedAt: data.average_score >= 100 ? new Date().toISOString() : undefined,
-        progress: data.average_score >= 100 ? 100 : 0,
+        category: 'quiz',
+        earned: isAchievementEarned('score-improvement'),
+        earnedAt: getEarnedDate('score-improvement'),
+        progress: data.average_score >= 75 ? 100 : Math.round((data.average_score / 75) * 100),
         maxProgress: 100,
-        requirement: 'Score 100% on any quiz',
-        points: 250
-      },
-
-      // Streak Achievements
-      {
-        id: 'consistent',
-        title: 'Consistent Learner',
-        description: 'Study for 7 days in a row',
-        icon: Calendar,
-        rarity: 'rare',
-        category: 'streak',
-        earned: data.streak_days >= 7,
-        earnedAt: data.streak_days >= 7 ? new Date().toISOString() : undefined,
-        progress: Math.min(data.streak_days, 7),
-        maxProgress: 7,
-        requirement: '7-day study streak',
+        requirement: 'Improve quiz performance',
         points: 100
       },
       {
-        id: 'unstoppable',
-        title: 'Unstoppable',
-        description: 'Study for 30 days in a row',
-        icon: Zap,
-        rarity: 'legendary',
-        category: 'streak',
-        earned: data.streak_days >= 30,
-        earnedAt: data.streak_days >= 30 ? new Date().toISOString() : undefined,
-        progress: Math.min(data.streak_days, 30),
-        maxProgress: 30,
-        requirement: '30-day study streak',
-        points: 500
+        id: 'quiz-master-10',
+        title: earnedAchievements.find(a => a.id === 'quiz-master-10')?.title || 'Quiz Master',
+        description: earnedAchievements.find(a => a.id === 'quiz-master-10')?.description || 'Complete 10 practice quizzes',
+        icon: Crown,
+        rarity: 'rare',
+        category: 'milestone',
+        earned: isAchievementEarned('quiz-master-10'),
+        earnedAt: getEarnedDate('quiz-master-10'),
+        progress: Math.min(data.quizzes_completed, 10),
+        maxProgress: 10,
+        requirement: 'Complete 10 quizzes',
+        points: 150
+      },
+      {
+        id: 'high-scorer',
+        title: earnedAchievements.find(a => a.id === 'high-scorer')?.title || 'High Scorer',
+        description: earnedAchievements.find(a => a.id === 'high-scorer')?.description || 'Achieved 90%+ on a quiz',
+        icon: Star,
+        rarity: 'epic',
+        category: 'quiz',
+        earned: isAchievementEarned('high-scorer'),
+        earnedAt: getEarnedDate('high-scorer'),
+        progress: data.average_score >= 90 ? 100 : Math.round((data.average_score / 90) * 100),
+        maxProgress: 100,
+        requirement: 'Score 90%+ on any quiz',
+        points: 200
+      },
+
+      // Additional achievements based on current progress
+      {
+        id: 'dedicated-learner',
+        title: 'Dedicated Learner',
+        description: 'Study for 10+ hours total',
+        icon: BookOpen,
+        rarity: 'common',
+        category: 'study',
+        earned: data.total_study_time >= 600,
+        earnedAt: data.total_study_time >= 600 ? '2025-08-18' : undefined,
+        progress: Math.min(data.total_study_time, 600),
+        maxProgress: 600,
+        requirement: 'Study for 10 hours',
+        points: 75
+      },
+      {
+        id: 'quiz-enthusiast',
+        title: 'Quiz Enthusiast',
+        description: 'Complete 25+ quizzes',
+        icon: Brain,
+        rarity: 'rare',
+        category: 'quiz',
+        earned: data.quizzes_completed >= 25,
+        earnedAt: data.quizzes_completed >= 25 ? '2025-08-16' : undefined,
+        progress: Math.min(data.quizzes_completed, 25),
+        maxProgress: 25,
+        requirement: 'Complete 25 quizzes',
+        points: 125
+      },
+      {
+        id: 'high-achiever',
+        title: 'High Achiever',
+        description: 'Maintain 85%+ average score',
+        icon: Award,
+        rarity: 'epic',
+        category: 'quiz',
+        earned: data.average_score >= 85,
+        earnedAt: data.average_score >= 85 ? '2025-08-17' : undefined,
+        progress: Math.min(data.average_score, 85),
+        maxProgress: 85,
+        requirement: 'Average 85% quiz score',
+        points: 175
       },
 
       // Certification-specific achievements
       ...Object.entries(certData).map(([certType, certProgress]) => ({
         id: `cert-${certType}`,
-        title: `${certType.toUpperCase()} Explorer`,
-        description: `Complete 50% of ${certType.toUpperCase()} content`,
-        icon: Award,
+        title: `${certType.replace('-', ' ').toUpperCase()} Explorer`,
+        description: `Make progress in ${certType.replace('-', ' ').toUpperCase()} certification`,
+        icon: Shield,
         rarity: 'rare' as const,
         category: 'milestone' as const,
         earned: certProgress.progress_percentage >= 50,
-        earnedAt: certProgress.progress_percentage >= 50 ? new Date().toISOString() : undefined,
+        earnedAt: certProgress.progress_percentage >= 50 ? '2025-08-15' : undefined,
         progress: Math.min(certProgress.progress_percentage, 50),
         maxProgress: 50,
-        requirement: `50% ${certType.toUpperCase()} progress`,
+        requirement: `50% ${certType.replace('-', ' ').toUpperCase()} progress`,
         points: 200
       }))
     ]
@@ -307,13 +308,15 @@ export function AchievementsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-secondary-900">Achievements</h1>
-        <p className="text-secondary-600 mt-2">
-          Track your learning milestones and celebrate your progress
-        </p>
-      </div>
+    <>
+      {usingMockData && <DemoBanner />}
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-secondary-900">Achievements</h1>
+          <p className="text-secondary-600 mt-2">
+            Track your learning milestones and celebrate your progress
+          </p>
+        </div>
 
       {/* Achievement Stats */}
       <AchievementStats 
@@ -364,6 +367,7 @@ export function AchievementsPage() {
           </p>
         </div>
       )}
-    </div>
+      </div>
+    </>
   )
 }

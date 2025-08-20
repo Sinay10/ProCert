@@ -8,6 +8,7 @@ import { QuizQuestion, QuizResponse, QuizResult } from '@/types/api'
 import { apiClient, API_ENDPOINTS } from '@/lib/api-client'
 import { QuizSettings } from './quiz-settings'
 import { QuestionDisplay } from './question-display'
+
 import { QuizResults } from './quiz-results'
 import { QuizHistory } from './quiz-history'
 
@@ -44,13 +45,18 @@ export function QuizInterface({ initialCertification }: QuizInterfaceProps) {
       // Map frontend certification to backend code
       const getCertificationCode = (frontendValue: string): string => {
         const certMap: Record<string, string> = {
-          'aws-advanced-networking-specialty': 'ANS',
           'aws-cloud-practitioner': 'CLF',
           'aws-solutions-architect-associate': 'SAA',
           'aws-developer-associate': 'DVA',
           'aws-sysops-administrator-associate': 'SOA',
           'aws-solutions-architect-professional': 'SAP',
-          'aws-devops-engineer-professional': 'DOP'
+          'aws-devops-engineer-professional': 'DOP',
+          'aws-machine-learning-specialty': 'MLS',
+          'aws-security-specialty': 'SCS',
+          'aws-advanced-networking-specialty': 'ANS',
+          'aws-ai-practitioner': 'AIP',
+          'aws-machine-learning-engineer-associate': 'MLA',
+          'aws-data-engineer-associate': 'DEA'
         }
         return certMap[frontendValue] || 'SAA'
       }
@@ -77,17 +83,34 @@ export function QuizInterface({ initialCertification }: QuizInterfaceProps) {
     const newAnswers = [...userAnswers]
     newAnswers[currentQuestionIndex] = answer
     setUserAnswers(newAnswers)
+    
+    // Automatically move to next question or submit quiz
+    if (currentQuiz && currentQuestionIndex < currentQuiz.questions.length - 1) {
+      // Move to next question
+      setTimeout(() => {
+        setCurrentQuestionIndex(currentQuestionIndex + 1)
+      }, 500) // Small delay for better UX
+    } else {
+      // Last question, submit the quiz
+      setTimeout(() => {
+        handleSubmitQuiz()
+      }, 500)
+    }
   }
 
   const handleNextQuestion = () => {
     if (currentQuiz && currentQuestionIndex < currentQuiz.questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1)
+      setState('active')
     }
   }
+
+
 
   const handlePreviousQuestion = () => {
     if (currentQuestionIndex > 0) {
       setCurrentQuestionIndex(currentQuestionIndex - 1)
+      setState('active')
     }
   }
 
@@ -169,6 +192,8 @@ export function QuizInterface({ initialCertification }: QuizInterfaceProps) {
     )
   }
 
+
+
   if (state === 'active' && currentQuiz && currentQuestion) {
     return (
       <div className="max-w-4xl mx-auto">
@@ -215,23 +240,8 @@ export function QuizInterface({ initialCertification }: QuizInterfaceProps) {
             Previous
           </Button>
 
-          <div className="flex gap-3">
-            {isLastQuestion ? (
-              <Button
-                onClick={handleSubmitQuiz}
-                disabled={!canProceed || loading}
-                loading={loading}
-              >
-                Submit Quiz
-              </Button>
-            ) : (
-              <Button
-                onClick={handleNextQuestion}
-                disabled={!canProceed}
-              >
-                Next Question
-              </Button>
-            )}
+          <div className="text-sm text-secondary-500 bg-secondary-50 p-3 rounded-md">
+            Select an answer to automatically continue
           </div>
         </div>
 

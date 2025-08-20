@@ -180,4 +180,3 @@ Clear browser cache/cookies to reset auth state
 Login again - NextAuth will now get ID tokens from Cognito
 Test all features - Should work without CORS/auth errors
 The authentication flow is now properly aligned! Your learning platform should be fully functional. 🎉
-
