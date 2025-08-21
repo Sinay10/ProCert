@@ -84,18 +84,14 @@ export function QuizInterface({ initialCertification }: QuizInterfaceProps) {
     newAnswers[currentQuestionIndex] = answer
     setUserAnswers(newAnswers)
     
-    // Automatically move to next question or submit quiz
+    // Only automatically move to next question (not submit on last question)
     if (currentQuiz && currentQuestionIndex < currentQuiz.questions.length - 1) {
       // Move to next question
       setTimeout(() => {
         setCurrentQuestionIndex(currentQuestionIndex + 1)
       }, 500) // Small delay for better UX
-    } else {
-      // Last question, submit the quiz
-      setTimeout(() => {
-        handleSubmitQuiz()
-      }, 500)
     }
+    // On last question, let user manually click "Finish Quiz" button
   }
 
   const handleNextQuestion = () => {
@@ -240,10 +236,36 @@ export function QuizInterface({ initialCertification }: QuizInterfaceProps) {
             Previous
           </Button>
 
-          <div className="text-sm text-secondary-500 bg-secondary-50 p-3 rounded-md">
-            Select an answer to automatically continue
-          </div>
+          {isLastQuestion ? (
+            <Button
+              onClick={handleSubmitQuiz}
+              disabled={!canProceed || loading}
+              className="bg-primary-600 hover:bg-primary-700"
+            >
+              {loading ? 'Submitting...' : 'Finish Quiz'}
+            </Button>
+          ) : (
+            <Button
+              onClick={handleNextQuestion}
+              disabled={!canProceed}
+              className="bg-primary-600 hover:bg-primary-700"
+            >
+              Next Question
+            </Button>
+          )}
         </div>
+
+        {!isLastQuestion && (
+          <div className="mt-4 text-center text-sm text-secondary-500 bg-secondary-50 p-3 rounded-md">
+            Select an answer to automatically continue, or use the Next button
+          </div>
+        )}
+
+        {isLastQuestion && canProceed && (
+          <div className="mt-4 text-center text-sm text-primary-600 bg-primary-50 p-3 rounded-md">
+            This is the last question. Click "Finish Quiz" to see your results!
+          </div>
+        )}
 
         {error && (
           <div className="mt-4 p-4 bg-error-50 border border-error-200 rounded-md">

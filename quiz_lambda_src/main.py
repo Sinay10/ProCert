@@ -92,6 +92,9 @@ def convert_decimals_to_numbers(obj):
         return obj
 
 
+
+
+
 def get_user_performance_data(user_id: str, certification_type: Optional[str] = None) -> Dict[str, Any]:
     """
     Get user's performance data for adaptive question selection.
