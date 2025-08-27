@@ -6,64 +6,21 @@
 
 ProCert is an intelligent AWS certification study platform that leverages RAG (Retrieval-Augmented Generation) technology to provide personalized learning experiences for AWS certification candidates.
 
-## 🚀 Features
+![Architecture Diagram](Screenshots%20for%20demo/ProCert_Architecture_Diagram.drawio.png)
 
-- **Multi-Certification Support**: SAA, DVA, SOA, and more AWS certifications
-- **Intelligent Content Processing**: Automatic extraction and categorization of study materials
-- **RAG-Powered Chatbot**: AI-powered assistant for answering certification questions
-- **Progress Tracking**: Comprehensive user progress and performance analytics
-- **Content Management**: Structured storage and retrieval of questions, study guides, and practice exams
-- **Certification-Aware Architecture**: Content filtering and recommendations based on certification type
+![Dashboard Overview](Screenshots%20for%20demo/Dashboard.png)
 
-## 🏗️ Architecture
+## Quick Start
 
-### Core Components
-
-- **Content Ingestion**: Lambda-based PDF processing and metadata extraction
-- **Vector Search**: OpenSearch Serverless for semantic content retrieval
-- **Storage Layer**: DynamoDB for metadata and user progress tracking
-- **AI Integration**: Amazon Bedrock for embeddings and chat responses
-- **API Layer**: API Gateway with Lambda functions for user interactions
-
-### AWS Services Used
-
-- **Compute**: AWS Lambda, API Gateway
-- **Storage**: Amazon S3, DynamoDB, OpenSearch Serverless
-- **AI/ML**: Amazon Bedrock (Titan Embeddings, Claude 3.5 Sonnet)
-- **Infrastructure**: AWS CDK, CloudFormation
-- **Security**: IAM, VPC, AWS WAF
-
-## 📁 Project Structure
-
-```
-procert-infrastructure/
-├── shared/                          # Shared models and interfaces
-│   ├── models.py                   # Data models (ContentMetadata, UserProgress, etc.)
-│   ├── interfaces.py               # Service interfaces
-│   ├── storage_manager.py          # DynamoDB storage implementation
-│   └── README.md                   # Shared module documentation
-├── lambda_src/                     # Content ingestion Lambda
-├── chatbot_lambda_src/             # Chatbot Lambda function
-├── index_setup_lambda_src/         # OpenSearch index setup
-├── procert_infrastructure/         # CDK infrastructure code
-├── tests/                          # Unit and integration tests
-├── scripts/                        # Utility scripts
-│   ├── cost_monitor.py            # AWS cost monitoring
-│   └── setup_aws_gitlab_ssh.sh    # GitLab SSH setup
-├── docs/                          # Documentation
-└── .kiro/specs/                   # Feature specifications
-```
-
-## 🛠️ Development Setup
-
-### Prerequisites
+### 1.1. Prerequisites
 
 - Python 3.11+
-- AWS CLI configured
+- AWS CLI configured with appropriate permissions
 - AWS CDK 2.210.0+
 - Node.js 18+ (for CDK)
+- Git access to the repository
 
-### Local Development
+### 1.2. One-Time Setup (Required)
 
 1. **Clone the repository**:
    ```bash
@@ -89,7 +46,171 @@ procert-infrastructure/
    cdk bootstrap
    ```
 
-### Running Tests
+### 1.3. Deploy Application
+
+```bash
+# Synthesize CloudFormation template
+cdk synth
+
+# Deploy to AWS
+cdk deploy --all
+
+# View deployment differences
+cdk diff
+```
+
+### 1.4. Access Your Application
+
+After deployment, the application will be available through:
+- **API Gateway Endpoint**: Available in CDK outputs
+- **Frontend URL**: Available in CDK outputs
+- **Health Check**: `GET /health` endpoint
+
+![Application Dashboard](Screenshots%20for%20demo/Dashboard.png)
+
+The main dashboard provides access to all platform features including study paths, quizzes, chatbot, and progress tracking.
+
+## Detailed Setup Guide
+
+### Prerequisites
+
+#### AWS CLI Requirements
+
+ProCert uses OpenSearch Serverless for cost-effective vector storage, which requires a recent AWS CLI version.
+
+**Minimum Requirements:**
+- AWS CLI Version: 2.27.57 or later
+- Python: 3.11+ (for CDK and deployment scripts)
+- Node.js: 18+ (for frontend development)
+
+**Quick Check:**
+```bash
+# Check your current AWS CLI version
+aws --version
+# Should show: aws-cli/2.27.57 or higher
+```
+
+#### Installation/Update Instructions
+
+**macOS (Homebrew):**
+```bash
+brew install awscli && brew upgrade awscli
+aws --version
+```
+
+**Linux/macOS (pip):**
+```bash
+pip install --upgrade awscli
+aws --version
+```
+
+**Official Installer:**
+```bash
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip && sudo ./aws/install --update
+aws --version
+```
+
+#### AWS Configuration
+
+**Configure AWS Credentials:**
+```bash
+aws configure
+```
+Enter:
+- AWS Access Key ID
+- Secret Access Key
+- Default region (e.g., us-east-1)
+- Output format (json)
+
+**Verify Configuration:**
+```bash
+aws sts get-caller-identity  # Test credentials
+aws opensearch help          # Test OpenSearch support
+```
+
+#### CDK Configuration (Optional)
+
+CDK automatically uses your AWS CLI configured account and region. If you encounter deployment issues, you can explicitly set them in `cdk.json`:
+
+```json
+{
+  "context": {
+    "account": "123456789012",  // Replace with your AWS account ID
+    "region": "us-east-1"       // Replace with your preferred region
+  }
+}
+```
+
+**Get your account ID:**
+```bash
+aws sts get-caller-identity --query Account --output text
+```
+
+#### Automated Prerequisites Check
+
+```bash
+# Run full environment check
+python3 scripts/check_prerequisites.py
+
+# Quick version check only
+python3 scripts/check_prerequisites.py --version-only
+```
+
+#### Common Issues & Solutions
+
+| Issue | Problem | Solution |
+|-------|---------|----------|
+| "OpenSearch command not found" | AWS CLI version too old | Update AWS CLI to 2.27.57+ |
+| "No credentials found" | AWS credentials not configured | Run `aws configure` |
+| "Region not specified" | No default region set | `aws configure set region us-east-1` |
+| "CDK bootstrap failed" | Account/region mismatch | Verify account ID and region |
+| "Permission denied" | Insufficient AWS permissions | Check IAM permissions for deployment |
+
+## Content Upload (Required for Full Functionality)
+
+### 2.1. Exam Path Documents
+
+Upload your source certification documents to the S3 bucket created during deployment. Supported formats:
+- PDF files containing exam guides
+- Study materials in PDF format
+- Practice questions and answers
+
+### 2.2. Exam Guides
+
+The system automatically processes and categorizes exam guides based on:
+- AWS certification type detection
+- Content structure analysis
+- Metadata extraction
+
+### 2.3. Practice Questions
+
+Upload practice questions in supported formats. The system will:
+- Extract questions and answers
+- Categorize by certification type
+- Index for semantic search
+
+### 2.4. Study Materials
+
+Additional study materials can be uploaded including:
+- Whitepapers
+- Documentation excerpts
+- Custom study notes
+
+### 2.5. Verify Content Upload
+
+Monitor content processing through:
+```bash
+# Check processing status
+python scripts/verify_content_upload.py
+
+# View indexed content
+python scripts/list_indexed_content.py
+```
+
+## Development Mode (Optional)
+
+For local development and testing:
 
 ```bash
 # Run unit tests
@@ -109,59 +230,231 @@ python scripts/test_docker_bundling.py
 python scripts/test_deployment.py
 ```
 
-## 🚀 Deployment
+## Cleanup
 
-### Using CDK
+To remove all AWS resources:
 
 ```bash
-# Synthesize CloudFormation template
-cdk synth
+# Destroy all stacks
+cdk destroy --all
 
-# Deploy to AWS
-cdk deploy --all
+# Clean up local environment
+deactivate
+rm -rf .venv
+```
 
-# View differences
+## Overview
+
+### 5.1. Architecture Flow
+
+![Architecture Flow](Screenshots%20for%20demo/ProCert_Architecture_Diagram.drawio.png)
+
+The ProCert platform follows a serverless architecture pattern:
+
+1. **Content Ingestion**: Documents uploaded to S3 trigger Lambda processing
+2. **Vector Processing**: Content is embedded using Amazon Bedrock Titan
+3. **Storage**: Metadata stored in DynamoDB, vectors in OpenSearch Serverless
+4. **Query Processing**: User queries processed through RAG pipeline
+5. **Response Generation**: Claude 3.5 Sonnet generates contextual responses
+
+### 5.2. Key Features
+
+- **Multi-Certification Support**: SAA, DVA, SOA, and more AWS certifications
+- **Intelligent Content Processing**: Automatic extraction and categorization of study materials
+- **RAG-Powered Chatbot**: AI-powered assistant for answering certification questions
+- **Progress Tracking**: Comprehensive user progress and performance analytics
+- **Content Management**: Structured storage and retrieval of questions, study guides, and practice exams
+- **Certification-Aware Architecture**: Content filtering and recommendations based on certification type
+
+#### Study Path Management
+
+![Study Path](Screenshots%20for%20demo/Study%20Path.png)
+
+The study path feature allows users to follow structured learning paths tailored to specific AWS certifications.
+
+#### Progress Tracking
+
+![Progress Screen](Screenshots%20for%20demo/Progress%20Screen.png)
+
+Comprehensive progress tracking shows user performance across different topics and certification areas.
+
+## Architecture
+
+### 6.1. Features
+
+#### Chat Interface
+
+![Chatbot Interface](Screenshots%20for%20demo/Chatbot.png)
+
+The chat interface provides:
+- Natural language query processing
+- Context-aware responses based on uploaded content
+- Certification-specific filtering
+- Conversation history and context retention
+
+#### Quiz System
+
+![Quiz Interface](Screenshots%20for%20demo/Quizzes.png)
+
+Interactive quiz functionality includes:
+- Adaptive question selection
+- Real-time feedback and explanations
+- Progress tracking and analytics
+- Performance-based recommendations
+
+#### Content Management
+
+![Resources Management](Screenshots%20for%20demo/Ressources.png)
+
+Comprehensive content management system:
+- Automated document processing
+- Metadata extraction and categorization
+- Content versioning and updates
+- Search and filtering capabilities
+
+#### Technical Features
+
+- **Vector Search**: OpenSearch Serverless for semantic content retrieval
+- **AI Integration**: Amazon Bedrock for embeddings and chat responses
+- **Scalable Storage**: DynamoDB for metadata and user progress tracking
+- **Serverless Compute**: AWS Lambda for all processing functions
+- **API Layer**: API Gateway with comprehensive endpoint management
+
+## Development
+
+### 7.1. Frontend Development
+
+The frontend is built with modern web technologies:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Key frontend components:
+- React-based user interface
+- TypeScript for type safety
+- Responsive design for mobile and desktop
+- Real-time chat interface
+
+### 7.2. Backend Development
+
+Backend services are implemented as AWS Lambda functions:
+
+```
+lambda_src/                     # Content ingestion Lambda
+chatbot_lambda_src/             # Chatbot Lambda function
+quiz_lambda_src/                # Quiz system Lambda
+user_profile_lambda_src/        # User management Lambda
+progress_lambda_src/            # Progress tracking Lambda
+recommendation_lambda_src/      # Recommendation engine Lambda
+```
+
+### 7.3. Infrastructure Development
+
+Infrastructure is managed through AWS CDK:
+
+```bash
+# View current infrastructure
+cdk ls
+
+# Deploy specific stack
+cdk deploy ProCertStack
+
+# View infrastructure differences
 cdk diff
 ```
 
-### Using GitLab CI/CD
+## Configuration
 
-The project includes automated CI/CD pipeline that:
-- Validates code quality (linting, formatting)
-- Runs comprehensive test suite
-- Performs security scanning
-- Deploys to AWS (manual trigger)
-
-## 📊 Monitoring & Cost Management
-
-### Cost Monitoring
-
-Monitor AWS costs with the built-in cost monitor:
-
-```bash
-python scripts/cost_monitor.py
-```
-
-### Current Architecture Costs
-
-- **OpenSearch Serverless**: ~$42/month (primary cost)
-- **VPC & Networking**: ~$7/month
-- **Lambda & API Gateway**: Minimal (within free tier)
-- **DynamoDB**: Minimal (within free tier)
-- **S3**: Minimal (within free tier)
-
-## 🔧 Configuration
-
-### Environment Variables
+### 8.1. Environment Variables
 
 The application uses the following environment variables:
 
-- `OPENSEARCH_ENDPOINT`: OpenSearch cluster endpoint
-- `OPENSEARCH_INDEX`: Index name for vector storage
-- `CONTENT_METADATA_TABLE`: DynamoDB table for content metadata
-- `USER_PROGRESS_TABLE`: DynamoDB table for user progress
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `OPENSEARCH_ENDPOINT` | OpenSearch cluster endpoint | Yes |
+| `OPENSEARCH_INDEX` | Index name for vector storage | Yes |
+| `CONTENT_METADATA_TABLE` | DynamoDB table for content metadata | Yes |
+| `USER_PROGRESS_TABLE` | DynamoDB table for user progress | Yes |
+| `BEDROCK_REGION` | AWS region for Bedrock services | Yes |
+| `S3_BUCKET_NAME` | S3 bucket for content storage | Yes |
 
-### Certification Types Supported
+### 8.2. Infrastructure Settings
+
+Key infrastructure configurations:
+
+- **OpenSearch Serverless**: Configured for vector search with appropriate capacity
+- **DynamoDB**: On-demand billing with global secondary indexes
+- **Lambda**: Python 3.11 runtime with appropriate memory and timeout settings
+- **API Gateway**: REST API with CORS enabled and rate limiting
+- **VPC**: Secure networking configuration for Lambda functions
+
+## Monitoring
+
+### 9.1. Health Monitoring
+
+Monitor application health through:
+
+```bash
+# Check application health
+curl https://your-api-gateway-url/health
+
+# Monitor AWS costs
+python scripts/cost_monitor.py
+
+# View CloudWatch logs
+aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/ProCert"
+```
+
+### 9.2. Key Metrics
+
+Important metrics to monitor:
+
+- **Lambda Function Duration**: Processing time for each function
+- **API Gateway Latency**: Response times for API calls
+- **OpenSearch Query Performance**: Search query execution times
+- **DynamoDB Throttling**: Read/write capacity utilization
+- **Error Rates**: Function error rates and types
+
+**Current Architecture Costs**:
+- OpenSearch Serverless: ~$42/month (primary cost)
+- VPC & Networking: ~$7/month
+- Lambda & API Gateway: Minimal (within free tier)
+- DynamoDB: Minimal (within free tier)
+- S3: Minimal (within free tier)
+
+## Project Structure
+
+```
+procert-infrastructure/
+├── shared/                          # Shared models and interfaces
+│   ├── models.py                   # Data models (ContentMetadata, UserProgress, etc.)
+│   ├── interfaces.py               # Service interfaces
+│   ├── storage_manager.py          # DynamoDB storage implementation
+│   └── README.md                   # Shared module documentation
+├── lambda_src/                     # Content ingestion Lambda
+├── chatbot_lambda_src/             # Chatbot Lambda function
+├── quiz_lambda_src/                # Quiz system Lambda
+├── user_profile_lambda_src/        # User management Lambda
+├── progress_lambda_src/            # Progress tracking Lambda
+├── recommendation_lambda_src/      # Recommendation engine Lambda
+├── index_setup_lambda_src/         # OpenSearch index setup
+├── procert_infrastructure/         # CDK infrastructure code
+├── frontend/                       # React frontend application
+├── tests/                          # Unit and integration tests
+├── scripts/                        # Utility scripts
+│   ├── cost_monitor.py            # AWS cost monitoring
+│   └── setup_aws_gitlab_ssh.sh    # GitLab SSH setup
+├── docs/                          # Documentation
+└── .kiro/specs/                   # Feature specifications
+```
+
+##
+ Certification Types Supported
+
+The platform supports multiple AWS certification paths:
 
 - **CCP**: AWS Certified Cloud Practitioner
 - **SAA**: AWS Certified Solutions Architect - Associate
@@ -169,58 +462,88 @@ The application uses the following environment variables:
 - **SOA**: AWS Certified SysOps Administrator - Associate
 - **DOP**: AWS Certified DevOps Engineer - Professional
 - **SAP**: AWS Certified Solutions Architect - Professional
-- And more...
+- **ANS**: AWS Certified Advanced Networking - Specialty
+- **SCS**: AWS Certified Security - Specialty
+- **DAS**: AWS Certified Data Analytics - Specialty
+- **MLS**: AWS Certified Machine Learning - Specialty
 
-## 📚 Documentation
+## Testing
 
-- [Storage Manager Documentation](shared/storage_manager_README.md)
-- [GitLab Setup Guide](docs/GITLAB_INTERN_SETUP.md)
-- [Content Management Specification](.kiro/specs/content-management/)
-- [Certification Detection Guide](CERTIFICATION_DETECTION.md)
-
-## 🧪 Testing
-
-The project includes comprehensive testing:
+The project includes comprehensive testing coverage:
 
 - **Unit Tests**: 23+ tests covering core functionality
 - **Integration Tests**: End-to-end testing with LocalStack
 - **Security Tests**: Automated security scanning with Bandit
 - **Coverage**: >80% code coverage target
 
-## 🔒 Security
+### Test Categories
+
+- **Lambda Function Tests**: Individual function testing
+- **Storage Layer Tests**: DynamoDB and OpenSearch integration
+- **API Tests**: End-to-end API functionality
+- **Security Tests**: Vulnerability scanning and compliance
+
+## Security
+
+Security is implemented at multiple layers:
 
 - **IAM Roles**: Least privilege access for all components
 - **VPC**: Secure networking with private subnets
 - **Encryption**: Data encrypted at rest and in transit
-- **Security Scanning**: Automated vulnerability detection
-- **Secret Management**: No hardcoded credentials
+- **Security Scanning**: Automated vulnerability detection with GitLab CI
+- **Secret Management**: No hardcoded credentials, AWS Secrets Manager integration
+- **API Security**: Rate limiting, input validation, and authentication
 
-## 🤝 Contributing
+## Documentation
+
+Comprehensive documentation is available:
+
+- [Storage Manager Documentation](shared/storage_manager_README.md)
+- [GitLab Setup Guide](docs/GITLAB_INTERN_SETUP.md)
+- [Content Management Specification](.kiro/specs/content-management/)
+- [Certification Detection Guide](CERTIFICATION_DETECTION.md)
+- [Authentication Troubleshooting](docs/AUTHENTICATION_TROUBLESHOOTING_GUIDE.md)
+- [Security Pipeline Integration](docs/SECURITY_PIPELINE_INTEGRATION.md)
+
+## Contributing
 
 1. Create a feature branch: `git checkout -b feature/new-feature`
 2. Make your changes and add tests
 3. Ensure all tests pass: `python -m pytest`
-4. Create a merge request in GitLab
+4. Run security scans: `python security_analysis_ci.py`
+5. Create a merge request in GitLab
 
-## 📈 Roadmap
+## Troubleshooting
 
-- [ ] Advanced analytics dashboard
-- [ ] Mobile application support
-- [ ] Multi-language content support
-- [ ] Advanced recommendation engine
-- [ ] Integration with AWS Training and Certification
+Common issues and solutions:
 
-## 📄 License
+### Deployment Issues
+- Ensure AWS credentials are properly configured
+- Verify CDK bootstrap has been completed
+- Check CloudFormation stack events for detailed error messages
 
-This project is for educational and personal use.
+### Content Processing Issues
+- Verify S3 bucket permissions
+- Check Lambda function logs in CloudWatch
+- Ensure content is in supported PDF format
 
-## 🆘 Support
+### API Issues
+- Check API Gateway logs
+- Verify Lambda function permissions
+- Test endpoints individually
+
+## Support
 
 For questions or issues:
 - Create an issue in GitLab
 - Check the documentation in the `docs/` directory
 - Review the specifications in `.kiro/specs/`
+- Consult troubleshooting guides for common issues
+
+## License
+
+This project is for educational and personal use.
 
 ---
 
-**Built with ❤️ using AWS CDK, Python, and modern DevOps practices**
+Built using AWS CDK, Python, and modern serverless architecture patterns.
