@@ -6,10 +6,6 @@
 
 ProCert is an intelligent AWS certification study platform that leverages RAG (Retrieval-Augmented Generation) technology to provide personalized learning experiences for AWS certification candidates.
 
-![Architecture Diagram](Screenshots%20for%20demo/ProCert_Architecture_Diagram.drawio.png)
-
-![Dashboard Overview](Screenshots%20for%20demo/Dashboard.png)
-
 ## Quick Start
 
 ### 1.1. Prerequisites
@@ -65,10 +61,6 @@ After deployment, the application will be available through:
 - **API Gateway Endpoint**: Available in CDK outputs
 - **Frontend URL**: Available in CDK outputs
 - **Health Check**: `GET /health` endpoint
-
-![Application Dashboard](Screenshots%20for%20demo/Dashboard.png)
-
-The main dashboard provides access to all platform features including study paths, quizzes, chatbot, and progress tracking.
 
 ## Detailed Setup Guide
 
