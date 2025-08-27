@@ -3,8 +3,6 @@
 
 <div align="center">
 
-![Architecture Diagram](assets/screenshots/architecture-diagram.png)
-
 *An intelligent AWS certification study platform powered by RAG technology*
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
