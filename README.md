@@ -16,14 +16,14 @@
 
 ProCert is an intelligent AWS certification study platform that leverages **RAG (Retrieval-Augmented Generation)** technology to provide personalized learning experiences for AWS certification candidates. Built with modern serverless architecture, it offers adaptive learning paths, intelligent content processing, and comprehensive progress tracking.
 
-### ✨ Key Features
+### Key Features
 
-- 🤖 **AI-Powered Chatbot** - Context-aware responses using Amazon Bedrock
-- 📚 **Multi-Certification Support** - SAA, DVA, SOA, and more AWS certifications  
-- 🧠 **Intelligent Content Processing** - Automatic PDF extraction and categorization
-- 📊 **Progress Tracking** - Comprehensive analytics and performance insights
-- 🎯 **Adaptive Quizzes** - Personalized question selection based on weak areas
-- 🔍 **Semantic Search** - Vector-based content retrieval with OpenSearch
+- **AI-Powered Chatbot** - Context-aware responses using Amazon Bedrock
+- **Multi-Certification Support** - SAA, DVA, SOA, and more AWS certifications  
+- **Intelligent Content Processing** - Automatic PDF extraction and categorization
+- **Progress Tracking** - Comprehensive analytics and performance insights
+- **Adaptive Quizzes** - Personalized question selection based on weak areas
+- **Semantic Search** - Vector-based content retrieval with OpenSearch
 
 ## Quick Start
 
