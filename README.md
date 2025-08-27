@@ -1,10 +1,31 @@
 
 # ProCert - AWS Certification Study Platform
 
-[![pipeline status](https://gitlab.aws.dev/ymarouaz/ProCert/badges/main/pipeline.svg)](https://gitlab.aws.dev/ymarouaz/ProCert/-/commits/main)
-[![coverage report](https://gitlab.aws.dev/ymarouaz/ProCert/badges/main/coverage.svg)](https://gitlab.aws.dev/ymarouaz/ProCert/-/commits/main)
+<div align="center">
 
-ProCert is an intelligent AWS certification study platform that leverages RAG (Retrieval-Augmented Generation) technology to provide personalized learning experiences for AWS certification candidates.
+![Architecture Diagram](assets/screenshots/architecture-diagram.png)
+
+*An intelligent AWS certification study platform powered by RAG technology*
+
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
+[![AWS CDK](https://img.shields.io/badge/AWS%20CDK-2.210.0+-orange.svg)](https://aws.amazon.com/cdk/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://typescriptlang.org)
+[![License](https://img.shields.io/badge/License-Educational-green.svg)](#license)
+
+</div>
+
+## 🎯 Overview
+
+ProCert is an intelligent AWS certification study platform that leverages **RAG (Retrieval-Augmented Generation)** technology to provide personalized learning experiences for AWS certification candidates. Built with modern serverless architecture, it offers adaptive learning paths, intelligent content processing, and comprehensive progress tracking.
+
+### ✨ Key Features
+
+- 🤖 **AI-Powered Chatbot** - Context-aware responses using Amazon Bedrock
+- 📚 **Multi-Certification Support** - SAA, DVA, SOA, and more AWS certifications  
+- 🧠 **Intelligent Content Processing** - Automatic PDF extraction and categorization
+- 📊 **Progress Tracking** - Comprehensive analytics and performance insights
+- 🎯 **Adaptive Quizzes** - Personalized question selection based on weak areas
+- 🔍 **Semantic Search** - Vector-based content retrieval with OpenSearch
 
 ## Quick Start
 
@@ -239,7 +260,11 @@ rm -rf .venv
 
 ### 5.1. Architecture Flow
 
-![Architecture Flow](Screenshots%20for%20demo/ProCert_Architecture_Diagram.drawio.png)
+<div align="center">
+
+![Architecture Flow](assets/screenshots/architecture-diagram.png)
+
+</div>
 
 The ProCert platform follows a serverless architecture pattern:
 
@@ -260,13 +285,13 @@ The ProCert platform follows a serverless architecture pattern:
 
 #### Study Path Management
 
-![Study Path](Screenshots%20for%20demo/Study%20Path.png)
+![Study Path](assets/screenshots/study-path.png)
 
 The study path feature allows users to follow structured learning paths tailored to specific AWS certifications.
 
 #### Progress Tracking
 
-![Progress Screen](Screenshots%20for%20demo/Progress%20Screen.png)
+![Progress Screen](assets/screenshots/progress-tracking.png)
 
 Comprehensive progress tracking shows user performance across different topics and certification areas.
 
@@ -276,7 +301,7 @@ Comprehensive progress tracking shows user performance across different topics a
 
 #### Chat Interface
 
-![Chatbot Interface](Screenshots%20for%20demo/Chatbot.png)
+![Chatbot Interface](assets/screenshots/chatbot-interface.png)
 
 The chat interface provides:
 - Natural language query processing
@@ -286,7 +311,7 @@ The chat interface provides:
 
 #### Quiz System
 
-![Quiz Interface](Screenshots%20for%20demo/Quizzes.png)
+![Quiz Interface](assets/screenshots/quiz-system.png)
 
 Interactive quiz functionality includes:
 - Adaptive question selection
@@ -294,9 +319,19 @@ Interactive quiz functionality includes:
 - Progress tracking and analytics
 - Performance-based recommendations
 
+#### Dashboard Overview
+
+![Dashboard](assets/screenshots/dashboard.png)
+
+The main dashboard provides:
+- Overview of study progress across certifications
+- Quick access to key features and resources
+- Performance metrics and recommendations
+- Recent activity and achievements
+
 #### Content Management
 
-![Resources Management](Screenshots%20for%20demo/Ressources.png)
+![Resources Management](assets/screenshots/resources-management.png)
 
 Comprehensive content management system:
 - Automated document processing
