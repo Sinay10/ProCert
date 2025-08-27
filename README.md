@@ -439,8 +439,7 @@ procert-infrastructure/
 ├── scripts/                        # Utility scripts
 │   ├── cost_monitor.py            # AWS cost monitoring
 │   └── setup_aws_gitlab_ssh.sh    # GitLab SSH setup
-├── docs/                          # Documentation
-└── .kiro/specs/                   # Feature specifications
+└── docs/                          # Documentation
 ```
 
 ##
@@ -492,7 +491,7 @@ Comprehensive documentation is available:
 
 - [Storage Manager Documentation](shared/storage_manager_README.md)
 - [GitLab Setup Guide](docs/GITLAB_INTERN_SETUP.md)
-- [Content Management Specification](.kiro/specs/content-management/)
+
 - [Certification Detection Guide](CERTIFICATION_DETECTION.md)
 - [Authentication Troubleshooting](docs/AUTHENTICATION_TROUBLESHOOTING_GUIDE.md)
 - [Security Pipeline Integration](docs/SECURITY_PIPELINE_INTEGRATION.md)
@@ -529,7 +528,6 @@ Common issues and solutions:
 For questions or issues:
 - Create an issue in GitLab
 - Check the documentation in the `docs/` directory
-- Review the specifications in `.kiro/specs/`
 - Consult troubleshooting guides for common issues
 
 ## License
