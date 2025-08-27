@@ -12,7 +12,7 @@
 
 </div>
 
-## 🎯 Overview
+## Overview
 
 ProCert is an intelligent AWS certification study platform that leverages **RAG (Retrieval-Augmented Generation)** technology to provide personalized learning experiences for AWS certification candidates. Built with modern serverless architecture, it offers adaptive learning paths, intelligent content processing, and comprehensive progress tracking.
 
